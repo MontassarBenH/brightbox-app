@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+BrightBox
 
-## Getting Started
+BrightBox is a private, invite-only app for school-friendly short videos and a simple chat. Think of it as a safe hallway: students can share learning clips, ask questions, and get quick feedback — only after they’ve been approved.
 
-First, run the development server:
+Why it exists
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Schools need a focused space for short educational content without the noise. BrightBox keeps things tight: approved users, simple flows, and clear rules. No public feeds. No surprise guests.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+What’s inside (MVP)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Invite gate — students request access; admins approve. Only approved emails can create accounts.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Accounts — email + password (or magic link later). Sessions work on both client and server.
 
-## Learn More
+Global chat — one shared room to keep questions and answers moving.
 
-To learn more about Next.js, take a look at the following resources:
+Clean UI — minimal components, readable on phones and laptops.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Extendable — video uploads and class channels can come next without rewiring the whole app.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+How it works (in plain English)
 
-## Deploy on Vercel
+A student requests an invite.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+An admin marks them as approved.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The student signs up with that email, sets a password, and gets in.
+
+Inside, they see a simple feed and a chat. That’s it.
+
+Safety and privacy
+
+Only approved users can join.
+
+Read and write rules are enforced in the database, not just the UI.
+
+No public endpoints that expose student data.
+
+Keep content guidelines simple and visible. Kids read them when they’re short.
+
+Tech (at a glance)
+
+Next.js (App Router), TypeScript, Tailwind
+
+Supabase for Auth, Database, and Realtime
+
+shadcn/ui and lucide icons for a tidy interface
+
+Getting started (super short)
+
+Add your Supabase URL and anon key to .env.local.
+
+Install dependencies and run the dev server.
+
+Use the “Request Invite” page to submit an email, approve it in the DB, then sign up and try the chat.
+
+If you need a step-by-step setup later, we can add one. For now, this should keep the readme light.
+
+Roadmap
+
+Class-specific rooms (instead of one global chat)
+
+Teacher tools (pin, mute, remove)
+
+Simple video uploads (start with MP4 via storage; move to adaptive streaming later)
+
+Moderation logs and content flags
+
+Contributing
+
+Keep changes small and easy to review. Name things clearly. Prefer boring, reliable solutions over clever ones that need a manual.
+
+License
+
+Licensed under the Apache License, Version 2.0.
