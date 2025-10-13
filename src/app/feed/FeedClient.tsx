@@ -1,22 +1,30 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { MessageCircle, Send, Video as VideoIcon, User as UserIcon } from 'lucide-react';
+import { MessageCircle, Send, Video as VideoIcon, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import dynamic from 'next/dynamic';
 
 const VideoUpload = dynamic(
   () => import('@/components/VideoUpload').then(m => m.VideoUpload),
   { ssr: false }
 );
-
 
 type Message = {
   id: string;
@@ -35,6 +43,7 @@ type Video = {
   user_id: string;
   title: string;
   mux_playback_id: string;
+  mux_asset_id: string;
   created_at: string;
   profiles: {
     username?: string | null;
@@ -49,6 +58,8 @@ export default function FeedClient({ user }: { user: User }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [videoToDelete, setVideoToDelete] = useState<Video | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
 
@@ -115,6 +126,39 @@ export default function FeedClient({ user }: { user: User }) {
     setVideos(combinedData as Video[]);
   }, [supabase]);
 
+  const deleteVideo = async (video: Video) => {
+    setDeleting(true);
+    try {
+      // Delete from storage
+      const { error: storageError } = await supabase.storage
+        .from('videos')
+        .remove([video.mux_asset_id]);
+
+      if (storageError) {
+        console.error('Storage deletion error:', storageError);
+      }
+
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('videos')
+        .delete()
+        .eq('id', video.id);
+
+      if (dbError) {
+        throw dbError;
+      }
+
+      // Update local state
+      setVideos(prev => prev.filter(v => v.id !== video.id));
+      setVideoToDelete(null);
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Failed to delete video');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   useEffect(() => {
     loadMessages();
     loadVideos();
@@ -132,7 +176,7 @@ export default function FeedClient({ user }: { user: User }) {
       .channel('videos-feed')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'videos' },
+        { event: '*', schema: 'public', table: 'videos' },
         () => loadVideos()
       )
       .subscribe();
@@ -217,7 +261,7 @@ export default function FeedClient({ user }: { user: User }) {
         {/* Video Feed - Reels Style */}
         <main className="flex-1 flex flex-col overflow-hidden">
           <div className="p-4 border-b bg-white flex items-center justify-between flex-shrink-0">
-            <h2 className="text-lg font-semibold">Videos</h2>
+            <h2 className="text-lg font-semibold">Videos ({videos.length})</h2>
             <VideoUpload userId={user.id} onUploadSuccess={loadVideos} />
           </div>
 
@@ -252,7 +296,23 @@ export default function FeedClient({ user }: { user: User }) {
                     controls
                     className="max-h-full max-w-full"
                     playsInline
+                    onError={() => {
+                      console.error('Video failed to load:', video.id);
+                      // Optionally reload videos to remove broken ones
+                      loadVideos();
+                    }}
                   />
+
+                  {/* Delete Button - Only show if user owns the video */}
+                  {video.user_id === user.id && (
+                    <button
+                      onClick={() => setVideoToDelete(video)}
+                      className="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white p-2 rounded-full transition-colors"
+                      title="Delete video"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
 
                   {/* Video Info Overlay */}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
@@ -280,9 +340,8 @@ export default function FeedClient({ user }: { user: User }) {
           </div>
         </main>
 
-        {/* Chat Sidebar - Fixed Height */}
+        {/* Chat Sidebar */}
         <aside className="w-96 border-l border-gray-200 bg-white flex flex-col h-full">
-          {/* Chat Header */}
           <div className="border-b border-gray-200 p-4 flex-shrink-0">
             <div className="flex items-center">
               <MessageCircle className="mr-2 h-5 w-5 text-purple-600" />
@@ -290,7 +349,6 @@ export default function FeedClient({ user }: { user: User }) {
             </div>
           </div>
 
-          {/* Messages - Scrollable */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.length === 0 ? (
               <div className="text-center text-gray-500 text-sm mt-8">
@@ -331,7 +389,6 @@ export default function FeedClient({ user }: { user: User }) {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Message Input - Fixed at Bottom */}
           <div className="border-t border-gray-200 p-4 flex-shrink-0">
             <div className="flex space-x-2">
               <Input
@@ -348,6 +405,28 @@ export default function FeedClient({ user }: { user: User }) {
           </div>
         </aside>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!videoToDelete} onOpenChange={() => setVideoToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Video?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{videoToDelete?.title}&quot;? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => videoToDelete && deleteVideo(videoToDelete)}
+              disabled={deleting}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
