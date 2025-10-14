@@ -129,44 +129,55 @@ export default function FeedClient({ user }: { user: User }) {
 
   // IntersectionObserver: auto play/pause current video
   useEffect(() => {
-    const container = feedContainerRef.current;
-    if (!container) return;
+  const container = feedContainerRef.current;
+  if (!container) return;
 
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const el = entry.target as HTMLElement;
-          const id = el.getAttribute('data-feed-id');
-          if (!id) return;
+  const io = new IntersectionObserver(
+    (entries) => {
+      const now = Date.now();
 
-          const v = videoRefs.current.get(id);
-          if (!v) return;
+      entries.forEach((entry) => {
+        const el = entry.target as HTMLElement;
+        const id = el.getAttribute('data-feed-id');
+        if (!id) return;
 
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-              v.muted = true;
-              v.playsInline = true;
-              v.setAttribute('playsinline', '');
-              v.setAttribute('webkit-playsinline', '');
+        const v = videoRefs.current.get(id);
+        if (!v) return;
 
-              try {
-                v.pause();
-                v.currentTime = 0;
-              } catch {}
+        // If we just toggled this video manually, don't let the observer fight it
+        if (justToggledRef.current && justToggledRef.current.id === id && now < justToggledRef.current.until) {
+          return;
+        }
 
-              v.play().catch(() => {});
-            } else {
-              v.pause();
-            }
+        // Be more forgiving on mobile: ~30% visible is enough to "enter"
+        const isIn = entry.isIntersecting && entry.intersectionRatio >= 0.3;
 
-        });
-      },
-      { root: container, threshold: [0.0, 0.6, 1.0] }
-    );
+        if (isIn) {
+          // start from the beginning each time it enters view
+          try { v.pause(); v.currentTime = 0; } catch {}
+          v.muted = true;
+          v.playsInline = true;
+          v.setAttribute('playsinline', '');
+          v.setAttribute('webkit-playsinline', '');
+          v.play().catch(() => {});
+        } else {
+          v.pause();
+        }
+      });
+    },
+    {
+      root: container,
+      threshold: [0.0, 0.3, 0.6, 1.0],
+      // narrow focus area so the "middle-ish" section counts as in-view earlier
+      rootMargin: '-10% 0px -10% 0px',
+    }
+  );
 
-    const sections = container.querySelectorAll('[data-feed-id]');
-    sections.forEach((s) => io.observe(s));
-    return () => io.disconnect();
-  }, [videos, posts]);
+  const sections = container.querySelectorAll('[data-feed-id]');
+  sections.forEach((s) => io.observe(s));
+  return () => io.disconnect();
+}, [videos, posts]);
+
 
     useEffect(() => {
   const onFirstPointer = () => {
@@ -245,17 +256,25 @@ export default function FeedClient({ user }: { user: User }) {
     overlayTimerRef.current = setTimeout(() => setOverlayVisibleId(null), 800);
   };
 
+  const justToggledRef = useRef<{ id: string; until: number } | null>(null);
+
+
   const toggleVideoPlay = (id: string) => {
-    const v = videoRefs.current.get(id);
-    if (!v) return;
-    if (v.paused) {
-      v.play().catch(() => {});
-      showOverlay(id, 'pause');
-    } else {
-      v.pause();
-      showOverlay(id, 'play');
-    }
-  };
+  const v = videoRefs.current.get(id);
+  if (!v) return;
+
+  // give a short grace period where the observer won't pause this video
+  justToggledRef.current = { id, until: Date.now() + 600 };
+
+  if (v.paused) {
+    v.play().catch(() => {});
+    showOverlay(id, 'pause');
+  } else {
+    v.pause();
+    showOverlay(id, 'play');
+  }
+};
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -709,30 +728,16 @@ const toggleLike = async (item: FeedItem) => {
                           }}
                           src={v.mux_playback_id}
                           className="max-h-full max-w-full"
-                          // ↓ add these three lines
+                        
                           autoPlay
                           muted
                           playsInline
-                          // keep what you already have
+                     
                           loop
                           controls={false}
                           preload="auto"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const id = `${item.type}-${item.id}`;
-                            const vid = videoRefs.current.get(id);
-                            if (!vid) return;
-                            if (vid.paused) { vid.play().catch(() => {}); showOverlay(id, 'pause'); }
-                            else { vid.pause(); showOverlay(id, 'play'); }
-                          }}
-                          onTouchEnd={(e) => {
-                            e.stopPropagation();
-                            const id = `${item.type}-${item.id}`;
-                            const vid = videoRefs.current.get(id);
-                            if (!vid) return;
-                            if (vid.paused) { vid.play().catch(() => {}); showOverlay(id, 'pause'); }
-                            else { vid.pause(); showOverlay(id, 'play'); }
-                          }}
+                         onClick={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
+                         onTouchEnd={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
                         />
 
 
