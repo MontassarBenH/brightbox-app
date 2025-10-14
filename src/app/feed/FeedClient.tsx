@@ -8,7 +8,9 @@ import {
   Trash2, 
   Heart,
   Filter,
-  X
+  X,
+  Play,
+  Pause
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -110,8 +112,62 @@ export default function FeedClient({ user }: { user: User }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const feedContainerRef = useRef<HTMLDivElement>(null);
 
-  // NEW: keep refs to the actual <video> elements by content id
-  const videoElsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+  // Video refs + overlay state
+  const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const [overlayVisibleId, setOverlayVisibleId] = useState<string | null>(null);
+  const [overlayIcon, setOverlayIcon] = useState<'play' | 'pause'>('play');
+  const overlayTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // IntersectionObserver: auto play/pause current video
+  useEffect(() => {
+    const container = feedContainerRef.current;
+    if (!container) return;
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const el = entry.target as HTMLElement;
+          const id = el.getAttribute('data-feed-id');
+          if (!id) return;
+
+          const v = videoRefs.current.get(id);
+          if (!v) return;
+
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+            // play visible video
+            v.play().catch(() => {});
+          } else {
+            // pause when out of view
+            v.pause();
+          }
+        });
+      },
+      { root: container, threshold: [0.0, 0.6, 1.0] }
+    );
+
+    const sections = container.querySelectorAll('[data-feed-id]');
+    sections.forEach((s) => io.observe(s));
+    return () => io.disconnect();
+  }, [videos, posts]);
+
+  const showOverlay = (id: string, icon: 'play' | 'pause') => {
+    setOverlayIcon(icon);
+    setOverlayVisibleId(id);
+    if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+    overlayTimerRef.current = setTimeout(() => setOverlayVisibleId(null), 800);
+  };
+
+  const toggleVideoPlay = (id: string) => {
+    const v = videoRefs.current.get(id);
+    if (!v) return;
+    if (v.paused) {
+      v.play().catch(() => {});
+      showOverlay(id, 'pause');
+    } else {
+      v.pause();
+      showOverlay(id, 'play');
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -119,7 +175,11 @@ export default function FeedClient({ user }: { user: User }) {
 
   // Load subjects
   const loadSubjects = useCallback(async () => {
-    const { data } = await supabase.from('subjects').select('*').order('name');
+    const { data } = await supabase
+      .from('subjects')
+      .select('*')
+      .order('name');
+
     if (data) setSubjects(data);
   }, [supabase]);
 
@@ -148,7 +208,10 @@ export default function FeedClient({ user }: { user: User }) {
 
   // Load videos
   const loadVideos = useCallback(async () => {
-    let query = supabase.from('videos').select('*').eq('status', 'ready');
+    let query = supabase
+      .from('videos')
+      .select('*')
+      .eq('status', 'ready');
 
     if (selectedSubject !== 'all') {
       query = query.eq('subject_id', selectedSubject);
@@ -175,7 +238,9 @@ export default function FeedClient({ user }: { user: User }) {
 
   // Load posts
   const loadPosts = useCallback(async () => {
-    let query = supabase.from('posts').select('*');
+    let query = supabase
+      .from('posts')
+      .select('*');
 
     if (selectedSubject !== 'all') {
       query = query.eq('subject_id', selectedSubject);
@@ -344,57 +409,6 @@ export default function FeedClient({ user }: { user: User }) {
 
   const userInitial = (user.email || 'U')[0]?.toUpperCase();
 
-  // NEW: Observe videos and autoplay/pause based on visibility
-  useEffect(() => {
-    const root = feedContainerRef.current || null;
-    if (!root) return;
-
-    // Pause all at start
-    videoElsRef.current.forEach(v => v.pause());
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // pick the most visible video above a threshold
-        const candidates = entries
-          .filter(e => e.isIntersecting && e.intersectionRatio >= 0.55)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-
-        if (candidates.length) {
-          const toPlay = candidates[0].target as HTMLVideoElement;
-          // pause all others
-          videoElsRef.current.forEach(v => {
-            if (v !== toPlay) v.pause();
-          });
-          // try play (mobile-safe since muted+playsInline)
-          toPlay.play().catch(() => {});
-        } else {
-          // none visible enough — pause all
-          videoElsRef.current.forEach(v => v.pause());
-        }
-      },
-      {
-        root,
-        threshold: [0, 0.25, 0.5, 0.55, 0.75, 1],
-      }
-    );
-
-    // Observe current videos
-    videoElsRef.current.forEach(v => observer.observe(v));
-
-    return () => {
-      observer.disconnect();
-      videoElsRef.current.forEach(v => v.pause());
-    };
-  }, [feedItems.length]); // re-run when the list size changes
-
-  // Clean up refs when feed changes (remove stale ids)
-  useEffect(() => {
-    const validIds = new Set(feedItems.filter(i => i.type === 'video').map(i => i.id));
-    Array.from(videoElsRef.current.keys()).forEach((id) => {
-      if (!validIds.has(id)) videoElsRef.current.delete(id);
-    });
-  }, [feedItems]);
-
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
@@ -515,31 +529,47 @@ export default function FeedClient({ user }: { user: User }) {
               </div>
             ) : (
               feedItems.map((item) => (
-                <div
+                <section
                   key={`${item.type}-${item.id}`}
+                  data-feed-id={`${item.type}-${item.id}`}
                   className="h-screen snap-start flex items-center justify-center bg-black relative"
                 >
                   {item.type === 'video' ? (
                     (() => {
                       const v = item as VideoItem;
                       return (
-                        <video
-                          ref={(el) => {
-                            if (el) {
-                              videoElsRef.current.set(v.id, el);
-                            } else {
-                              videoElsRef.current.delete(v.id);
-                            }
-                          }}
-                          src={v.mux_playback_id}
-                          // Important for mobile autoplay
-                          muted
-                          playsInline
-                          loop
-                          preload="metadata"
-                          controls={false}
-                          className="max-h-full max-w-full"
-                        />
+                        <div className="relative w-full h-full flex items-center justify-center">
+                          {/* Video */}
+                          <video
+                            ref={(el) => {
+                              if (el) videoRefs.current.set(`${item.type}-${item.id}`, el);
+                              else videoRefs.current.delete(`${item.type}-${item.id}`);
+                            }}
+                            src={v.mux_playback_id}
+                            className="max-h-full max-w-full"
+                            playsInline
+                            muted
+                            loop
+                            // no native controls; we show our own overlay
+                            controls={false}
+                            onClick={() => toggleVideoPlay(`${item.type}-${item.id}`)}
+                          />
+
+                          {/* Center Play/Pause overlay icon */}
+                          <div
+                            className={`pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-200 ${
+                              overlayVisibleId === `${item.type}-${item.id}` ? 'opacity-100' : 'opacity-0'
+                            }`}
+                          >
+                            <div className="bg-black/40 rounded-full p-4">
+                              {overlayIcon === 'play' ? (
+                                <Play className="w-14 h-14 text-white" />
+                              ) : (
+                                <Pause className="w-14 h-14 text-white" />
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       );
                     })()
                   ) : (
@@ -564,7 +594,7 @@ export default function FeedClient({ user }: { user: User }) {
                     })()
                   )}
 
-                  {/* Actions Sidebar — left center */}
+                  {/* Actions Sidebar (left center) */}
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-40 pointer-events-none">
                     <div className="pointer-events-auto">
                       <button
@@ -591,8 +621,6 @@ export default function FeedClient({ user }: { user: User }) {
                         <button
                           onClick={() => setItemToDelete(item)}
                           className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-red-500 transition"
-                          aria-label="Delete"
-                          title="Delete"
                         >
                           <Trash2 className="w-7 h-7 text-white" />
                         </button>
@@ -600,7 +628,7 @@ export default function FeedClient({ user }: { user: User }) {
                     )}
                   </div>
 
-                  {/* Info Overlay — padded so it avoids the buttons */}
+                  {/* Info Overlay (bottom) */}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-6 pl-20 md:pl-24">
                     <div className="max-w-4xl">
                       {item.type === 'video' && (
@@ -634,7 +662,7 @@ export default function FeedClient({ user }: { user: User }) {
                       )}
                     </div>
                   </div>
-                </div>
+                </section>
               ))
             )}
           </div>
@@ -780,7 +808,9 @@ export default function FeedClient({ user }: { user: User }) {
                 className="flex-1"
               />
               <Button
-                onClick={() => { sendMessage(); }}
+                onClick={() => {
+                  sendMessage();
+                }}
                 disabled={!newMessage.trim()}
                 size="icon"
               >
