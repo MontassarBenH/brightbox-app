@@ -110,17 +110,16 @@ export default function FeedClient({ user }: { user: User }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const feedContainerRef = useRef<HTMLDivElement>(null);
 
+  // NEW: keep refs to the actual <video> elements by content id
+  const videoElsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   // Load subjects
   const loadSubjects = useCallback(async () => {
-    const { data } = await supabase
-      .from('subjects')
-      .select('*')
-      .order('name');
-
+    const { data } = await supabase.from('subjects').select('*').order('name');
     if (data) setSubjects(data);
   }, [supabase]);
 
@@ -149,10 +148,7 @@ export default function FeedClient({ user }: { user: User }) {
 
   // Load videos
   const loadVideos = useCallback(async () => {
-    let query = supabase
-      .from('videos')
-      .select('*')
-      .eq('status', 'ready');
+    let query = supabase.from('videos').select('*').eq('status', 'ready');
 
     if (selectedSubject !== 'all') {
       query = query.eq('subject_id', selectedSubject);
@@ -179,9 +175,7 @@ export default function FeedClient({ user }: { user: User }) {
 
   // Load posts
   const loadPosts = useCallback(async () => {
-    let query = supabase
-      .from('posts')
-      .select('*');
+    let query = supabase.from('posts').select('*');
 
     if (selectedSubject !== 'all') {
       query = query.eq('subject_id', selectedSubject);
@@ -350,6 +344,57 @@ export default function FeedClient({ user }: { user: User }) {
 
   const userInitial = (user.email || 'U')[0]?.toUpperCase();
 
+  // NEW: Observe videos and autoplay/pause based on visibility
+  useEffect(() => {
+    const root = feedContainerRef.current || null;
+    if (!root) return;
+
+    // Pause all at start
+    videoElsRef.current.forEach(v => v.pause());
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // pick the most visible video above a threshold
+        const candidates = entries
+          .filter(e => e.isIntersecting && e.intersectionRatio >= 0.55)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+
+        if (candidates.length) {
+          const toPlay = candidates[0].target as HTMLVideoElement;
+          // pause all others
+          videoElsRef.current.forEach(v => {
+            if (v !== toPlay) v.pause();
+          });
+          // try play (mobile-safe since muted+playsInline)
+          toPlay.play().catch(() => {});
+        } else {
+          // none visible enough — pause all
+          videoElsRef.current.forEach(v => v.pause());
+        }
+      },
+      {
+        root,
+        threshold: [0, 0.25, 0.5, 0.55, 0.75, 1],
+      }
+    );
+
+    // Observe current videos
+    videoElsRef.current.forEach(v => observer.observe(v));
+
+    return () => {
+      observer.disconnect();
+      videoElsRef.current.forEach(v => v.pause());
+    };
+  }, [feedItems.length]); // re-run when the list size changes
+
+  // Clean up refs when feed changes (remove stale ids)
+  useEffect(() => {
+    const validIds = new Set(feedItems.filter(i => i.type === 'video').map(i => i.id));
+    Array.from(videoElsRef.current.keys()).forEach((id) => {
+      if (!validIds.has(id)) videoElsRef.current.delete(id);
+    });
+  }, [feedItems]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
@@ -441,7 +486,7 @@ export default function FeedClient({ user }: { user: User }) {
       <div className="flex flex-1 overflow-hidden">
         {/* Feed */}
         <main className="flex-1 overflow-hidden relative">
-          {/* Floating Action Buttons - unchanged positioning */}
+          {/* Floating Action Buttons */}
           <div className="absolute bottom-6 right-6 z-20 md:z-30 flex flex-col gap-3 pointer-events-none">
             <div className="pointer-events-auto">
               <VideoUpload userId={user.id} onUploadSuccess={loadVideos} />
@@ -479,10 +524,21 @@ export default function FeedClient({ user }: { user: User }) {
                       const v = item as VideoItem;
                       return (
                         <video
+                          ref={(el) => {
+                            if (el) {
+                              videoElsRef.current.set(v.id, el);
+                            } else {
+                              videoElsRef.current.delete(v.id);
+                            }
+                          }}
                           src={v.mux_playback_id}
-                          controls
-                          className="max-h-full max-w-full"
+                          // Important for mobile autoplay
+                          muted
                           playsInline
+                          loop
+                          preload="metadata"
+                          controls={false}
+                          className="max-h-full max-w-full"
                         />
                       );
                     })()
@@ -508,7 +564,7 @@ export default function FeedClient({ user }: { user: User }) {
                     })()
                   )}
 
-                  {/* Actions Sidebar — MOVED to left center + pointer-events wrapper */}
+                  {/* Actions Sidebar — left center */}
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-40 pointer-events-none">
                     <div className="pointer-events-auto">
                       <button
@@ -535,6 +591,8 @@ export default function FeedClient({ user }: { user: User }) {
                         <button
                           onClick={() => setItemToDelete(item)}
                           className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-red-500 transition"
+                          aria-label="Delete"
+                          title="Delete"
                         >
                           <Trash2 className="w-7 h-7 text-white" />
                         </button>
@@ -542,7 +600,7 @@ export default function FeedClient({ user }: { user: User }) {
                     )}
                   </div>
 
-                  {/* Info Overlay — ADDED extra left padding so text avoids buttons */}
+                  {/* Info Overlay — padded so it avoids the buttons */}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-6 pl-20 md:pl-24">
                     <div className="max-w-4xl">
                       {item.type === 'video' && (
@@ -722,9 +780,7 @@ export default function FeedClient({ user }: { user: User }) {
                 className="flex-1"
               />
               <Button
-                onClick={() => {
-                  sendMessage();
-                }}
+                onClick={() => { sendMessage(); }}
                 disabled={!newMessage.trim()}
                 size="icon"
               >
