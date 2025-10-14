@@ -143,12 +143,23 @@ export default function FeedClient({ user }: { user: User }) {
           if (!v) return;
 
           if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-            // play visible video
-            v.play().catch(() => {});
+            // If already buffered enough, play immediately
+            if (v.readyState >= 2) {
+              v.play().catch(() => {});
+            } else {
+              // Wait once until it can play, then start
+              const onCanPlay = () => {
+                v.play().catch(() => {});
+                v.removeEventListener('canplay', onCanPlay);
+              };
+              v.addEventListener('canplay', onCanPlay, { once: true });
+              // Encourage buffering
+              try { v.load(); } catch {}
+            }
           } else {
-            // pause when out of view
             v.pause();
           }
+
         });
       },
       { root: container, threshold: [0.0, 0.6, 1.0] }
@@ -644,26 +655,45 @@ const toggleLike = async (item: FeedItem) => {
                         }}
                       >
                         {/* Video */}
-                        <video
-                          ref={(el) => {
-                            if (el) videoRefs.current.set(`${item.type}-${item.id}`, el);
-                            else videoRefs.current.delete(`${item.type}-${item.id}`);
-                          }}
-                          src={v.mux_playback_id}
-                          className="max-h-full max-w-full"
-                          playsInline
-                          muted
-                          loop
-                          controls={false}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleVideoPlay(`${item.type}-${item.id}`);
-                          }}
-                          onTouchEnd={(e) => {
-                            e.stopPropagation();
-                            toggleVideoPlay(`${item.type}-${item.id}`);
-                          }}
-                        />
+                          <video
+                            ref={(el) => {
+                              const id = `${item.type}-${item.id}`;
+                              if (el) {
+                                // Store
+                                videoRefs.current.set(id, el);
+
+                                // iOS/Safari-friendly flags MUST be set as properties
+                                el.muted = true;
+                                el.playsInline = true;
+
+                                // Extra attributes for iOS Safari
+                                el.setAttribute('playsinline', '');
+                                el.setAttribute('webkit-playsinline', '');
+
+                                // Hint the browser to pull data so first frame isn't black
+                                el.preload = 'auto';
+                              } else {
+                                videoRefs.current.delete(id);
+                              }
+                            }}
+                            src={v.mux_playback_id}
+                            className="max-h-full max-w-full"
+                            // important: let the browser try autoplay; we'll still pause when offscreen
+                            autoPlay
+                            muted
+                            playsInline
+                            loop
+                            controls={false}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleVideoPlay(`${item.type}-${item.id}`);
+                            }}
+                            onTouchEnd={(e) => {
+                              e.stopPropagation();
+                              toggleVideoPlay(`${item.type}-${item.id}`);
+                            }}
+                          />
+
 
                         {/* Center Play/Pause overlay icon */}
                         <div
