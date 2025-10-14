@@ -127,56 +127,80 @@ export default function FeedClient({ user }: { user: User }) {
   const [overlayIcon, setOverlayIcon] = useState<'play' | 'pause'>('play');
   const overlayTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const activeIdRef = useRef<string | null>(null);
+
+
   // IntersectionObserver: auto play/pause current video
   useEffect(() => {
-  const container = feedContainerRef.current;
-  if (!container) return;
+    const container = feedContainerRef.current;
+    if (!container) return;
 
-  const io = new IntersectionObserver(
-    (entries) => {
-      const now = Date.now();
+    const io = new IntersectionObserver(
+      (entries) => {
+        const now = Date.now();
 
-      entries.forEach((entry) => {
-        const el = entry.target as HTMLElement;
-        const id = el.getAttribute('data-feed-id');
-        if (!id) return;
+        // pick the most-visible section
+        let best: { id: string; ratio: number } | null = null;
 
-        const v = videoRefs.current.get(id);
-        if (!v) return;
+        for (const entry of entries) {
+          const el = entry.target as HTMLElement;
+          const id = el.getAttribute('data-feed-id');
+          if (!id) continue;
 
-        // If we just toggled this video manually, don't let the observer fight it
-        if (justToggledRef.current && justToggledRef.current.id === id && now < justToggledRef.current.until) {
+          const ratio = entry.isIntersecting ? entry.intersectionRatio : 0;
+          if (!best || ratio > best.ratio) best = { id, ratio };
+        }
+
+        // we only switch if the best is clearly in view
+        if (!best || best.ratio < 0.3) return;
+
+        // don't fight a very recent manual tap
+        if (justToggledRef.current && justToggledRef.current.id === best.id && now < justToggledRef.current.until) {
           return;
         }
 
-        // Be more forgiving on mobile: ~30% visible is enough to "enter"
-        const isIn = entry.isIntersecting && entry.intersectionRatio >= 0.3;
+        const nextId = best.id;
+        const prevId = activeIdRef.current;
 
-        if (isIn) {
-          // start from the beginning each time it enters view
+        if (nextId === prevId) return; // already active
+
+        // pause previous
+        if (prevId) {
+          const prevV = videoRefs.current.get(prevId);
+          if (prevV) prevV.pause();
+        }
+
+        // play next from the start
+        const v = videoRefs.current.get(nextId);
+        if (v) {
           try { v.pause(); v.currentTime = 0; } catch {}
           v.muted = true;
           v.playsInline = true;
           v.setAttribute('playsinline', '');
           v.setAttribute('webkit-playsinline', '');
+          // if not ready, try to load first; then play
+          if (v.readyState < 2) v.load();
           v.play().catch(() => {});
-        } else {
-          v.pause();
+          activeIdRef.current = nextId;
         }
-      });
-    },
-    {
-      root: container,
-      threshold: [0.0, 0.3, 0.6, 1.0],
-      // narrow focus area so the "middle-ish" section counts as in-view earlier
-      rootMargin: '-10% 0px -10% 0px',
-    }
-  );
 
-  const sections = container.querySelectorAll('[data-feed-id]');
-  sections.forEach((s) => io.observe(s));
-  return () => io.disconnect();
-}, [videos, posts]);
+        // also make sure all *other* videos are paused
+        videoRefs.current.forEach((vid, id) => {
+          if (id !== nextId) vid.pause();
+        });
+      },
+      {
+        root: container,
+        threshold: [0.0, 0.3, 0.6, 1.0],
+        rootMargin: '-10% 0px -10% 0px',
+      }
+    );
+
+    const sections = container.querySelectorAll('[data-feed-id]');
+    sections.forEach((s) => io.observe(s));
+    return () => io.disconnect();
+  }, [videos, posts]);
+
 
 
     useEffect(() => {
