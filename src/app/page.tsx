@@ -11,8 +11,8 @@ export default function HomePage() {
               <Video className="w-12 h-12 text-white" />
             </div>
           </div>
-          <h1 className="text-6xl font-bold text-white mb-4">VidChat</h1>
-          <p className="text-xl text-purple-200">Share moments with your circle</p>
+          <h1 className="text-6xl font-bold text-white mb-4">BrightBox</h1>
+          <p className="text-xl text-purple-200">Share moments with your classmates</p>
         </div>
 
         <div className="max-w-md mx-auto space-y-4">

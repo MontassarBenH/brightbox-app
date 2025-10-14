@@ -16,6 +16,8 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
 
+import Link from 'next/link';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -644,8 +646,14 @@ export default function FeedClient({ user }: { user: User }) {
                         </Avatar>
                         <div>
                           <p className="text-white font-semibold">
-                            {item.profiles?.username || item.profiles?.email || 'Anonymous'}
+                            <Link
+                              href={`/profile/${item.user_id}`}
+                              className="hover:underline focus:underline"
+                            >
+                              {item.profiles?.username || item.profiles?.email || 'Anonymous'}
+                            </Link>
                           </p>
+
                           <p className="text-white/70 text-sm">{formatTime(item.created_at)}</p>
                         </div>
                       </div>
