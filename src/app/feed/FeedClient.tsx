@@ -1,7 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { MessageCircle, Send, Video as VideoIcon, Trash2 } from 'lucide-react';
+import { 
+  MessageCircle, 
+  Send, 
+  Video as VideoIcon, 
+  Trash2, 
+  Heart,
+  Filter,
+  X
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
@@ -9,6 +17,7 @@ import type { User } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,23 +28,40 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import dynamic from 'next/dynamic';
+import { CreatePost } from '@/components/CreatePost';
 
 const VideoUpload = dynamic(
   () => import('@/components/VideoUpload').then(m => m.VideoUpload),
   { ssr: false }
 );
 
+type Subject = {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+};
+
+type Profile = {
+  username?: string | null;
+  email?: string | null;
+  avatar_url?: string | null;
+};
+
 type Message = {
   id: string;
   user_id: string;
   content: string;
   created_at: string;
-  profiles: {
-    username?: string | null;
-    email?: string | null;
-    avatar_url?: string | null;
-  } | null;
+  profiles: Profile | null;
 };
 
 type Video = {
@@ -44,12 +70,27 @@ type Video = {
   title: string;
   mux_playback_id: string;
   mux_asset_id: string;
+  subject_id?: string;
+  likes_count: number;
   created_at: string;
-  profiles: {
-    username?: string | null;
-    email?: string | null;
-  } | null;
+  profiles: Profile | null;
 };
+
+type Post = {
+  id: string;
+  user_id: string;
+  content: string;
+  background_image?: string;
+  subject_id?: string;
+  likes_count: number;
+  created_at: string;
+  profiles: Profile | null;
+};
+
+/** Discriminated union types */
+type VideoItem = Video & { type: 'video' }
+type PostItem  = Post  & { type: 'post' }
+type FeedItem  = VideoItem | PostItem
 
 export default function FeedClient({ user }: { user: User }) {
   const supabase = createClient();
@@ -57,33 +98,41 @@ export default function FeedClient({ user }: { user: User }) {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [newMessage, setNewMessage] = useState('');
-  const [videoToDelete, setVideoToDelete] = useState<Video | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<FeedItem | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  // NEW: mobile chat toggle
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [likedItems, setLikedItems] = useState<Set<string>>(new Set());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const videoContainerRef = useRef<HTMLDivElement>(null);
+  const feedContainerRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Load subjects
+  const loadSubjects = useCallback(async () => {
+    const { data } = await supabase
+      .from('subjects')
+      .select('*')
+      .order('name');
+
+    if (data) setSubjects(data);
+  }, [supabase]);
+
+  // Load messages
   const loadMessages = useCallback(async () => {
-    const { data: messagesData, error: messagesError } = await supabase
+    const { data: messagesData, error } = await supabase
       .from('messages')
       .select('*')
       .order('created_at', { ascending: true })
       .limit(50);
 
-    if (messagesError) {
-      console.error('Error loading messages:', messagesError);
-      return;
-    }
-
-    if (!messagesData) return;
+    if (error || !messagesData) return;
 
     const userIds = [...new Set(messagesData.map(m => m.user_id))];
     const { data: profilesData } = await supabase
@@ -92,28 +141,28 @@ export default function FeedClient({ user }: { user: User }) {
       .in('id', userIds);
 
     const profilesMap = new Map((profilesData ?? []).map(p => [p.id, p]));
-    const combinedData = messagesData.map(msg => ({
+    setMessages(messagesData.map(msg => ({
       ...msg,
       profiles: profilesMap.get(msg.user_id) || null,
-    }));
-
-    setMessages(combinedData as Message[]);
+    })));
   }, [supabase]);
 
+  // Load videos
   const loadVideos = useCallback(async () => {
-    const { data: videosData, error: videosError } = await supabase
+    let query = supabase
       .from('videos')
       .select('*')
-      .eq('status', 'ready')
+      .eq('status', 'ready');
+
+    if (selectedSubject !== 'all') {
+      query = query.eq('subject_id', selectedSubject);
+    }
+
+    const { data: videosData, error } = await query
       .order('created_at', { ascending: false })
       .limit(20);
 
-    if (videosError) {
-      console.error('Error loading videos:', videosError);
-      return;
-    }
-
-    if (!videosData) return;
+    if (error || !videosData) return;
 
     const userIds = [...new Set(videosData.map(v => v.user_id))];
     const { data: profilesData } = await supabase
@@ -122,97 +171,167 @@ export default function FeedClient({ user }: { user: User }) {
       .in('id', userIds);
 
     const profilesMap = new Map((profilesData ?? []).map(p => [p.id, p]));
-    const combinedData = videosData.map(video => ({
+    setVideos(videosData.map(video => ({
       ...video,
       profiles: profilesMap.get(video.user_id) || null,
-    }));
+    })));
+  }, [supabase, selectedSubject]);
 
-    setVideos(combinedData as Video[]);
-  }, [supabase]);
+  // Load posts
+  const loadPosts = useCallback(async () => {
+    let query = supabase
+      .from('posts')
+      .select('*');
 
-  const deleteVideo = async (video: Video) => {
+    if (selectedSubject !== 'all') {
+      query = query.eq('subject_id', selectedSubject);
+    }
+
+    const { data: postsData, error } = await query
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (error || !postsData) return;
+
+    const userIds = [...new Set(postsData.map(p => p.user_id))];
+    const { data: profilesData } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', userIds);
+
+    const profilesMap = new Map((profilesData ?? []).map(p => [p.id, p]));
+    setPosts(postsData.map(post => ({
+      ...post,
+      profiles: profilesMap.get(post.user_id) || null,
+    })));
+  }, [supabase, selectedSubject]);
+
+  // Load user's likes
+  const loadLikes = useCallback(async () => {
+    const { data } = await supabase
+      .from('likes')
+      .select('post_id, video_id')
+      .eq('user_id', user.id);
+
+    if (data) {
+      const liked = new Set<string>();
+      data.forEach(like => {
+        if (like.post_id) liked.add(`post-${like.post_id}`);
+        if (like.video_id) liked.add(`video-${like.video_id}`);
+      });
+      setLikedItems(liked);
+    }
+  }, [supabase, user.id]);
+
+  // Combined feed (videos + posts)
+  const feedItems: FeedItem[] = [
+    ...videos.map(v => ({ ...v, type: 'video' as const })),
+    ...posts.map(p => ({ ...p, type: 'post' as const })),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  // Toggle like
+  const toggleLike = async (item: FeedItem) => {
+    const key = `${item.type}-${item.id}`;
+    const isLiked = likedItems.has(key);
+
+    if (isLiked) {
+      await supabase
+        .from('likes')
+        .delete()
+        .eq('user_id', user.id)
+        .eq(item.type === 'video' ? 'video_id' : 'post_id', item.id);
+
+      await supabase
+        .from(item.type === 'video' ? 'videos' : 'posts')
+        .update({ likes_count: Math.max(0, item.likes_count - 1) })
+        .eq('id', item.id);
+
+      setLikedItems(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    } else {
+      await supabase
+        .from('likes')
+        .insert({
+          user_id: user.id,
+          [item.type === 'video' ? 'video_id' : 'post_id']: item.id,
+        });
+
+      await supabase
+        .from(item.type === 'video' ? 'videos' : 'posts')
+        .update({ likes_count: item.likes_count + 1 })
+        .eq('id', item.id);
+
+      setLikedItems(prev => new Set(prev).add(key));
+    }
+
+    if (item.type === 'video') loadVideos();
+    else loadPosts();
+  };
+
+  // Delete item (narrow by type)
+  const deleteItem = async (item: FeedItem) => {
     setDeleting(true);
     try {
-      // Keep your current behavior (attempt storage delete with mux_asset_id)
-      const { error: storageError } = await supabase.storage
-        .from('videos')
-        .remove([video.mux_asset_id]);
-
-      if (storageError) {
-        console.error('Storage deletion error:', storageError);
+      if (item.type === 'video') {
+        const v = item as VideoItem;
+        await supabase.storage.from('videos').remove([v.mux_asset_id]);
+        await supabase.from('videos').delete().eq('id', v.id);
+        await loadVideos();
+      } else {
+        const p = item as PostItem;
+        await supabase.from('posts').delete().eq('id', p.id);
+        await loadPosts();
       }
-
-      const { error: dbError } = await supabase
-        .from('videos')
-        .delete()
-        .eq('id', video.id);
-
-      if (dbError) {
-        throw dbError;
-      }
-
-      setVideos(prev => prev.filter(v => v.id !== video.id));
-      setVideoToDelete(null);
+      setItemToDelete(null);
     } catch (error) {
       console.error('Delete error:', error);
-      alert('Failed to delete video');
+      alert('Failed to delete');
     } finally {
       setDeleting(false);
     }
   };
 
   useEffect(() => {
+    loadSubjects();
     loadMessages();
     loadVideos();
+    loadPosts();
+    loadLikes();
 
     const messagesChannel = supabase
       .channel('messages-feed')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        () => loadMessages()
-      )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, loadMessages)
       .subscribe();
 
     const videosChannel = supabase
       .channel('videos-feed')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'videos' },
-        () => loadVideos()
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'videos' }, loadVideos)
+      .subscribe();
+
+    const postsChannel = supabase
+      .channel('posts-feed')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, loadPosts)
       .subscribe();
 
     return () => {
       supabase.removeChannel(messagesChannel);
       supabase.removeChannel(videosChannel);
+      supabase.removeChannel(postsChannel);
     };
-  }, [supabase, loadMessages, loadVideos]);
+  }, [supabase, loadSubjects, loadMessages, loadVideos, loadPosts, loadLikes]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
   const sendMessage = async () => {
-    const content = newMessage.trim();
-    if (!content) return;
-
-    const { error } = await supabase
-      .from('messages')
-      .insert({ user_id: user.id, content })
-      .select();
-
-    if (!error) {
-      setNewMessage('');
-      loadMessages();
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (!newMessage.trim()) return;
+    await supabase.from('messages').insert({ user_id: user.id, content: newMessage.trim() });
+    setNewMessage('');
+    loadMessages();
   };
 
   const handleLogout = async () => {
@@ -222,12 +341,11 @@ export default function FeedClient({ user }: { user: User }) {
   };
 
   const formatTime = (iso: string) => {
-    const date = new Date(iso);
-    const mins = Math.floor((Date.now() - date.getTime()) / 60000);
+    const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
     if (mins < 1) return 'Just now';
-    if (mins < 60) return `${mins}m ago`;
-    if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
-    return `${Math.floor(mins / 1440)}d ago`;
+    if (mins < 60) return `${mins}m`;
+    if (mins < 1440) return `${Math.floor(mins / 60)}h`;
+    return `${Math.floor(mins / 1440)}d`;
   };
 
   const userInitial = (user.email || 'U')[0]?.toUpperCase();
@@ -235,110 +353,227 @@ export default function FeedClient({ user }: { user: User }) {
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 py-4 px-6 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center space-x-3">
-          <div className="bg-purple-600 w-10 h-10 rounded-lg flex items-center justify-center">
-            <VideoIcon className="text-white" />
+      <header className="bg-white border-b sticky top-0 z-40 px-4 py-3">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="bg-gradient-to-br from-purple-600 to-indigo-600 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg">
+              <VideoIcon className="text-white w-5 h-5" />
+            </div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
+              SchoolFeed
+            </h1>
           </div>
-          <h1 className="text-xl font-bold text-gray-900">BrightBox</h1>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="md:hidden"
+              onClick={() => setMobileChatOpen(true)}
+            >
+              <MessageCircle className="w-5 h-5" />
+            </Button>
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <Filter className="w-5 h-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right">
+                <SheetHeader>
+                  <SheetTitle>Filter by Subject</SheetTitle>
+                </SheetHeader>
+                <div className="mt-6 space-y-2">
+                  <Button
+                    variant={selectedSubject === 'all' ? 'default' : 'outline'}
+                    className="w-full justify-start"
+                    onClick={() => setSelectedSubject('all')}
+                  >
+                    All Subjects
+                  </Button>
+                  {subjects.map((subject) => (
+                    <Button
+                      key={subject.id}
+                      variant={selectedSubject === subject.id ? 'default' : 'outline'}
+                      className="w-full justify-start"
+                      onClick={() => setSelectedSubject(subject.id)}
+                    >
+                      <span className="mr-2">{subject.icon}</span>
+                      {subject.name}
+                    </Button>
+                  ))}
+                </div>
+              </SheetContent>
+            </Sheet>
+            <Avatar className="w-8 h-8 cursor-pointer" onClick={handleLogout}>
+              <AvatarImage src="" alt={user.email ?? 'user'} />
+              <AvatarFallback>{userInitial}</AvatarFallback>
+            </Avatar>
+          </div>
         </div>
 
-        <div className="flex items-center space-x-3">
-          {/* NEW: Mobile Chat button */}
-          <Button className="md:hidden" size="sm" onClick={() => setMobileChatOpen(true)}>
-            Chat
-          </Button>
-
-          <div className="text-right hidden sm:block">
-            <p className="text-sm font-medium text-gray-900">{user.email}</p>
-            <p className="text-xs text-gray-500">Online</p>
-          </div>
-          <Avatar className="hidden sm:inline-flex">
-            <AvatarImage src="" alt={user.email ?? 'user'} />
-            <AvatarFallback>{userInitial}</AvatarFallback>
-          </Avatar>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            Logout
-          </Button>
+        {/* Subject Pills */}
+        <div className="max-w-6xl mx-auto mt-3 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+          <Badge
+            variant={selectedSubject === 'all' ? 'default' : 'outline'}
+            className="cursor-pointer whitespace-nowrap"
+            onClick={() => setSelectedSubject('all')}
+          >
+            All
+          </Badge>
+          {subjects.map((subject) => (
+            <Badge
+              key={subject.id}
+              variant={selectedSubject === subject.id ? 'default' : 'outline'}
+              className="cursor-pointer whitespace-nowrap"
+              onClick={() => setSelectedSubject(subject.id)}
+              style={{
+                backgroundColor: selectedSubject === subject.id ? subject.color : undefined,
+              }}
+            >
+              {subject.icon} {subject.name}
+            </Badge>
+          ))}
         </div>
       </header>
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Video Feed - Reels Style */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="p-4 border-b bg-white flex items-center justify-between flex-shrink-0">
-            <h2 className="text-lg font-semibold">Videos ({videos.length})</h2>
-            <VideoUpload userId={user.id} onUploadSuccess={loadVideos} />
+        {/* Feed */}
+        <main className="flex-1 overflow-hidden relative">
+          {/* Floating Action Buttons - unchanged positioning */}
+          <div className="absolute bottom-6 right-6 z-20 md:z-30 flex flex-col gap-3 pointer-events-none">
+            <div className="pointer-events-auto">
+              <VideoUpload userId={user.id} onUploadSuccess={loadVideos} />
+            </div>
+            <div className="pointer-events-auto">
+              <CreatePost userId={user.id} subjects={subjects} onPostCreated={loadPosts} />
+            </div>
           </div>
 
-          {/* Scrollable Reels Container */}
-          <div 
-            ref={videoContainerRef}
-            className="flex-1 overflow-y-auto snap-y snap-mandatory scroll-smooth"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          {/* Scrollable Feed */}
+          <div
+            ref={feedContainerRef}
+            className="h-full overflow-y-auto snap-y snap-mandatory scroll-smooth scrollbar-hide"
           >
-            <style jsx>{`
-              div::-webkit-scrollbar {
-                display: none;
-              }
-            `}</style>
-            
-            {videos.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center p-8">
+            {feedItems.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center p-8 text-center">
                 <VideoIcon className="w-16 h-16 text-gray-400 mb-4" />
-                <p className="text-gray-500 mb-4">No videos yet</p>
-                <p className="text-sm text-gray-400 mb-4">Upload your first video to get started</p>
-                {/* Keeping your second uploader as-is */}
-                <VideoUpload userId={user.id} onUploadSuccess={loadVideos} />
+                <p className="text-gray-500 text-lg mb-2">No content yet</p>
+                <p className="text-sm text-gray-400 mb-6">
+                  Be the first to share something!
+                </p>
+                <div className="flex gap-3">
+                  <VideoUpload userId={user.id} onUploadSuccess={loadVideos} />
+                  <CreatePost userId={user.id} subjects={subjects} onPostCreated={loadPosts} />
+                </div>
               </div>
             ) : (
-              videos.map((video) => (
+              feedItems.map((item) => (
                 <div
-                  key={video.id}
+                  key={`${item.type}-${item.id}`}
                   className="h-screen snap-start flex items-center justify-center bg-black relative"
                 >
-                  {/* Video */}
-                  <video
-                    src={video.mux_playback_id}
-                    controls
-                    className="max-h-full max-w-full"
-                    playsInline
-                    onError={() => {
-                      console.error('Video failed to load:', video.id);
-                      loadVideos();
-                    }}
-                  />
-
-                  {/* Delete Button - Only show if user owns the video */}
-                  {video.user_id === user.id && (
-                    <button
-                      onClick={() => setVideoToDelete(video)}
-                      className="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white p-2 rounded-full transition-colors"
-                      title="Delete video"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
+                  {item.type === 'video' ? (
+                    (() => {
+                      const v = item as VideoItem;
+                      return (
+                        <video
+                          src={v.mux_playback_id}
+                          controls
+                          className="max-h-full max-w-full"
+                          playsInline
+                        />
+                      );
+                    })()
+                  ) : (
+                    (() => {
+                      const p = item as PostItem;
+                      return (
+                        <div
+                          className="w-full h-full flex items-center justify-center p-8"
+                          style={{
+                            backgroundImage: p.background_image
+                              ? `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url(${p.background_image})`
+                              : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                          }}
+                        >
+                          <p className="text-white text-2xl md:text-4xl font-bold text-center max-w-2xl leading-relaxed">
+                            {p.content}
+                          </p>
+                        </div>
+                      );
+                    })()
                   )}
 
-                  {/* Video Info Overlay */}
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="text-white font-semibold text-lg mb-1">
-                          {video.title}
+                  {/* Actions Sidebar — MOVED to left center + pointer-events wrapper */}
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-40 pointer-events-none">
+                    <div className="pointer-events-auto">
+                      <button
+                        onClick={() => toggleLike(item)}
+                        className="flex flex-col items-center"
+                      >
+                        <div className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-white/30 transition">
+                          <Heart
+                            className={`w-7 h-7 ${
+                              likedItems.has(`${item.type}-${item.id}`)
+                                ? 'fill-red-500 text-red-500'
+                                : 'text-white'
+                            }`}
+                          />
+                        </div>
+                        <span className="text-white text-xs mt-1 font-semibold">
+                          {item.likes_count}
+                        </span>
+                      </button>
+                    </div>
+
+                    {item.user_id === user.id && (
+                      <div className="pointer-events-auto">
+                        <button
+                          onClick={() => setItemToDelete(item)}
+                          className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-red-500 transition"
+                        >
+                          <Trash2 className="w-7 h-7 text-white" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info Overlay — ADDED extra left padding so text avoids buttons */}
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-6 pl-20 md:pl-24">
+                    <div className="max-w-4xl">
+                      {item.type === 'video' && (
+                        <h3 className="text-white font-semibold text-lg mb-2">
+                          {(item as VideoItem).title}
                         </h3>
-                        <div className="flex items-center text-white/80 text-sm">
-                          <Avatar className="w-6 h-6 mr-2">
-                            <AvatarFallback className="text-xs">
-                              {(video.profiles?.username || video.profiles?.email || 'U')[0]?.toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span>{video.profiles?.username || video.profiles?.email || 'Unknown'}</span>
-                          <span className="mx-2">•</span>
-                          <span>{formatTime(video.created_at)}</span>
+                      )}
+                      <div className="flex items-center gap-3 mb-2">
+                        <Avatar className="w-10 h-10 border-2 border-white">
+                          <AvatarFallback className="text-xs">
+                            {(item.profiles?.username || item.profiles?.email || 'U')[0]?.toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-white font-semibold">
+                            {item.profiles?.username || item.profiles?.email || 'Anonymous'}
+                          </p>
+                          <p className="text-white/70 text-sm">{formatTime(item.created_at)}</p>
                         </div>
                       </div>
+                      {item.subject_id && (
+                        <Badge
+                          style={{
+                            backgroundColor: subjects.find(s => s.id === item.subject_id)?.color,
+                          }}
+                          className="text-white"
+                        >
+                          {subjects.find(s => s.id === item.subject_id)?.icon}{' '}
+                          {subjects.find(s => s.id === item.subject_id)?.name}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -347,13 +582,14 @@ export default function FeedClient({ user }: { user: User }) {
           </div>
         </main>
 
-        {/* Chat Sidebar (desktop/tablet) */}
-        <aside className="hidden md:flex w-96 border-l border-gray-200 bg-white flex-col h-full">
-          <div className="border-b border-gray-200 p-4 flex-shrink-0">
-            <div className="flex items-center">
-              <MessageCircle className="mr-2 h-5 w-5 text-purple-600" />
-              <h3 className="font-semibold text-gray-900">Chat ({messages.length})</h3>
+        {/* Desktop Chat */}
+        <aside className="hidden md:flex w-96 border-l bg-white flex-col h-full">
+          <div className="border-b p-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageCircle className="w-5 h-5 text-purple-600" />
+              <h3 className="font-semibold">School Chat</h3>
             </div>
+            <Badge variant="secondary">{messages.length}</Badge>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -370,7 +606,7 @@ export default function FeedClient({ user }: { user: User }) {
                 return (
                   <div key={m.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
                     <div
-                      className={`max-w-xs px-4 py-2 rounded-lg ${
+                      className={`max-w-[80%] px-4 py-2 rounded-lg ${
                         isOwn
                           ? 'bg-purple-600 text-white rounded-br-none'
                           : 'bg-gray-100 text-gray-800 rounded-bl-none'
@@ -396,13 +632,18 @@ export default function FeedClient({ user }: { user: User }) {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="border-t border-gray-200 p-4 flex-shrink-0">
-            <div className="flex space-x-2">
+          <div className="border-t p-4">
+            <div className="flex gap-2">
               <Input
                 placeholder="Type a message..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
                 className="flex-1"
               />
               <Button onClick={sendMessage} disabled={!newMessage.trim()} size="icon">
@@ -416,18 +657,17 @@ export default function FeedClient({ user }: { user: User }) {
       {/* Mobile Chat Overlay */}
       {mobileChatOpen && (
         <div className="fixed inset-0 z-50 bg-white md:hidden flex flex-col">
-          {/* Top bar */}
-          <div className="border-b border-gray-200 p-4 flex items-center justify-between">
-            <div className="flex items-center">
-              <MessageCircle className="mr-2 h-5 w-5 text-purple-600" />
-              <h3 className="font-semibold text-gray-900">Chat ({messages.length})</h3>
+          <div className="border-b p-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageCircle className="w-5 h-5 text-purple-600" />
+              <h3 className="font-semibold">School Chat</h3>
+              <Badge variant="secondary" className="ml-2">{messages.length}</Badge>
             </div>
             <Button variant="outline" size="sm" onClick={() => setMobileChatOpen(false)}>
-              Close
+              <X className="w-4 h-4 mr-1" /> Close
             </Button>
           </div>
 
-          {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.length === 0 ? (
               <div className="text-center text-gray-500 text-sm mt-8">
@@ -441,7 +681,7 @@ export default function FeedClient({ user }: { user: User }) {
                 return (
                   <div key={m.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
                     <div
-                      className={`max-w-xs px-4 py-2 rounded-lg ${
+                      className={`max-w-[85%] px-4 py-2 rounded-lg ${
                         isOwn
                           ? 'bg-purple-600 text-white rounded-br-none'
                           : 'bg-gray-100 text-gray-800 rounded-bl-none'
@@ -467,14 +707,18 @@ export default function FeedClient({ user }: { user: User }) {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
-          <div className="border-t border-gray-200 p-4">
-            <div className="flex space-x-2">
+          <div className="border-t p-4">
+            <div className="flex gap-2">
               <Input
                 placeholder="Type a message..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
                 className="flex-1"
               />
               <Button
@@ -492,18 +736,18 @@ export default function FeedClient({ user }: { user: User }) {
       )}
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!videoToDelete} onOpenChange={() => setVideoToDelete(null)}>
+      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => { if (!open) setItemToDelete(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Video?</AlertDialogTitle>
+            <AlertDialogTitle>Delete item?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &quot;{videoToDelete?.title}&quot;? This action cannot be undone.
+              Are you sure you want to delete this {itemToDelete?.type}? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => videoToDelete && deleteVideo(videoToDelete)}
+              onClick={() => itemToDelete && deleteItem(itemToDelete)}
               disabled={deleting}
               className="bg-red-500 hover:bg-red-600"
             >

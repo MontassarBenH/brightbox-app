@@ -110,9 +110,8 @@ export function VideoUpload({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <Upload className="mr-2 h-4 w-4" />
-          Upload Video
+        <Button size="icon" aria-label="Upload video" title="Upload video">
+        <Upload className="h-5 w-5" />
         </Button>
       </DialogTrigger>
       <DialogContent>
