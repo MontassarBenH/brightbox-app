@@ -131,106 +131,39 @@ export default function FeedClient({ user }: { user: User }) {
 
 
   // IntersectionObserver: auto play/pause current video
-  useEffect(() => {
-  const enableAutoplay = () => {
-    const container = feedContainerRef.current;
-    if (!container) return;
+  // IntersectionObserver: auto play/pause current video
+useEffect(() => {
+  const container = feedContainerRef.current;
+  if (!container) return;
 
-    // Find the most visible video
-    const sections = Array.from(
-      container.querySelectorAll<HTMLElement>('[data-feed-id]')
-    );
+  const io = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        const el = entry.target as HTMLElement;
+        const id = el.getAttribute('data-feed-id');
+        if (!id) return;
 
-    const middle = container.scrollTop + container.clientHeight / 2;
-    let bestId: string | null = null;
-    let bestDelta = Infinity;
+        const v = videoRefs.current.get(id);
+        if (!v) return;
 
-    for (const s of sections) {
-      const rect = s.getBoundingClientRect();
-      const top = rect.top + container.scrollTop;
-      const center = top + rect.height / 2;
-      const delta = Math.abs(center - middle);
-      if (delta < bestDelta) {
-        bestDelta = delta;
-        bestId = s.dataset.feedId ?? s.getAttribute('data-feed-id');
-      }
-    }
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          // Play visible video
+          v.muted = true;
+          v.playsInline = true;
+          v.play().catch(() => {});
+        } else {
+          // Pause when out of view
+          v.pause();
+        }
+      });
+    },
+    { root: container, threshold: [0.0, 0.6, 1.0] }
+  );
 
-    // Play the most visible video
-    if (bestId) {
-      const v = videoRefs.current.get(bestId);
-      if (v) {
-        v.muted = true;
-        v.playsInline = true;
-        v.setAttribute('playsinline', '');
-        v.setAttribute('webkit-playsinline', '');
-        v.play().catch(() => {});
-      }
-    }
-  };
-
-  // Listen for any user interaction
-  const events = ['touchstart', 'click', 'scroll'];
-  events.forEach(event => {
-    window.addEventListener(event, enableAutoplay, { once: true, passive: true });
-  });
-
-  return () => {
-    events.forEach(event => {
-      window.removeEventListener(event, enableAutoplay);
-    });
-  };
-}, []);
-
-
-
-
-    useEffect(() => {
-  const onFirstPointer = () => {
-    const container = feedContainerRef.current;
-    if (!container) return;
-
-    // Strongly-typed NodeList
-    const sections = Array.from(
-      container.querySelectorAll<HTMLElement>('[data-feed-id]')
-    );
-
-    const middle = container.scrollTop + container.clientHeight / 2;
-
-    // Track just the id instead of the element
-    let bestId: string | null = null;
-    let bestDelta = Infinity;
-
-    for (const s of sections) {
-      const rect = s.getBoundingClientRect();
-      const top = rect.top + container.scrollTop;
-      const center = top + rect.height / 2;
-      const delta = Math.abs(center - middle);
-      if (delta < bestDelta) {
-        bestDelta = delta;
-        // prefer dataset when available
-        bestId = s.dataset.feedId ?? s.getAttribute('data-feed-id');
-      }
-    }
-
-    if (bestId) {
-      const v = videoRefs.current.get(bestId);
-      if (v) {
-        v.muted = true;
-        v.playsInline = true;
-        v.setAttribute('playsinline', '');
-        v.setAttribute('webkit-playsinline', '');
-        try { v.currentTime = 0; } catch {}
-        v.play().catch(() => {});
-      }
-    }
-  };
-
-  if (typeof window !== 'undefined') {
-    window.addEventListener('pointerdown', onFirstPointer, { once: true, passive: true });
-    return () => window.removeEventListener('pointerdown', onFirstPointer);
-  }
-}, []);
+  const sections = container.querySelectorAll('[data-feed-id]');
+  sections.forEach((s) => io.observe(s));
+  return () => io.disconnect();
+}, [videos, posts]);
 
 
 
@@ -268,9 +201,6 @@ export default function FeedClient({ user }: { user: User }) {
   const toggleVideoPlay = (id: string) => {
   const v = videoRefs.current.get(id);
   if (!v) return;
-
-  // give a short grace period where the observer won't pause this video
-  justToggledRef.current = { id, until: Date.now() + 600 };
 
   if (v.paused) {
     v.play().catch(() => {});
@@ -727,30 +657,20 @@ const toggleLike = async (item: FeedItem) => {
                         }}
                       >
                         {/* Video */}
-                        <video
-                          ref={(el) => {
-                            if (el) {
-                              videoRefs.current.set(`${item.type}-${item.id}`, el);
-                              // iOS specific: set attributes immediately
-                              el.muted = true;
-                              el.playsInline = true;
-                              el.setAttribute('playsinline', '');
-                              el.setAttribute('webkit-playsinline', '');
-                              el.setAttribute('x-webkit-airplay', 'allow');
-                            } else {
-                              videoRefs.current.delete(`${item.type}-${item.id}`);
-                            }
-                          }}
-                          src={v.mux_playback_id}
-                          className="max-h-full max-w-full"
-                          muted
-                          playsInline
-                          loop
-                          controls={false}
-                          preload="auto"
-                          onClick={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
-                          onTouchEnd={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
-                        />
+                      <video
+                        ref={(el) => {
+                          if (el) videoRefs.current.set(`${item.type}-${item.id}`, el);
+                          else videoRefs.current.delete(`${item.type}-${item.id}`);
+                        }}
+                        src={v.mux_playback_id}
+                        className="max-h-full max-w-full"
+                        muted
+                        playsInline
+                        loop
+                        preload="auto"
+                        onClick={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
+                        onTouchEnd={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
+                      />
 
                         {/* Center Play/Pause overlay icon */}
                         <div
