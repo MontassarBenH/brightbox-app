@@ -42,42 +42,60 @@ export default async function ProfilePage({
   ])
 
   // --- Saved items (private; only when viewing your own profile) ---
-  let savedVideos:
-    Array<{ id: string; title: string; mux_playback_id: string; created_at: string }> = []
-  let savedPosts:
-    Array<{ id: string; content: string; background_image: string | null; created_at: string }> = []
+// at the top, after other types
+type SavedVideo = {
+  id: string;
+  title: string;
+  mux_playback_id: string;
+  created_at: string;
+};
 
-  if (isOwnProfile) {
-    // fetch all saves once
-    const { data: saves } = await supabase
-      .from('saves')
-      .select('video_id, post_id')
-      .eq('user_id', user.id)
+type SavedPost = {
+  id: string;
+  content: string;
+  background_image: string | null;
+  created_at: string;
+};
 
-    const videoIds = (saves ?? []).map(s => s.video_id).filter(Boolean) as string[]
-    const postIds  = (saves ?? []).map(s => s.post_id).filter(Boolean) as string[]
+let savedVideos: SavedVideo[] = [];
+let savedPosts: SavedPost[] = [];
 
-    const [vidsRes, postsRes] = await Promise.all([
-      videoIds.length
-        ? supabase
-            .from('videos')
-            .select('id, title, mux_playback_id, created_at')
-            .in('id', videoIds)
-            .eq('status', 'ready')
-            .order('created_at', { ascending: false })
-        : Promise.resolve({ data: [] as typeof savedVideos }),
-      postIds.length
-        ? supabase
-            .from('posts')
-            .select('id, content, background_image, created_at')
-            .in('id', postIds)
-            .order('created_at', { ascending: false })
-        : Promise.resolve({ data: [] as typeof savedPosts }),
-    ])
+if (isOwnProfile) {
+  const { data: saves } = await supabase
+    .from('saves')
+    .select('video_id, post_id')
+    .eq('user_id', user.id);
 
-    savedVideos = (vidsRes as any).data ?? []
-    savedPosts  = (postsRes as any).data ?? []
+  const videoIds = (saves ?? [])
+    .map(s => s.video_id)
+    .filter((x): x is string => Boolean(x));
+
+  const postIds = (saves ?? [])
+    .map(s => s.post_id)
+    .filter((x): x is string => Boolean(x));
+
+  if (videoIds.length) {
+    const { data: vids } = await supabase
+      .from('videos')
+      .select('id, title, mux_playback_id, created_at')
+      .in('id', videoIds)
+      .eq('status', 'ready')
+      .order('created_at', { ascending: false });
+
+    savedVideos = (vids ?? []) as SavedVideo[];
   }
+
+  if (postIds.length) {
+    const { data: p } = await supabase
+      .from('posts')
+      .select('id, content, background_image, created_at')
+      .in('id', postIds)
+      .order('created_at', { ascending: false });
+
+    savedPosts = (p ?? []) as SavedPost[];
+  }
+}
+
 
   const displayName = profile?.username || profile?.email || 'Profile'
   const initial = (displayName?.[0] || 'U').toUpperCase()
