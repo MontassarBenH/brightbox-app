@@ -1,10 +1,12 @@
-// lib/analytics.ts
+// src/lib/analytics.ts
 import { createClient } from '@/lib/supabase/client';
+
+type AnalyticsMetadata = Record<string, unknown>;
 
 export class AnalyticsService {
   private supabase = createClient();
   private sessionId: string | null = null;
-  private lastActiveTime: number = Date.now();
+  private lastActiveTime = Date.now();
   private inactivityTimeout: NodeJS.Timeout | null = null;
 
   // Track user session
@@ -15,35 +17,39 @@ export class AnalyticsService {
       .select()
       .single();
 
+    if (error) {
+      console.error('[analytics] startSession error:', error);
+      return null;
+    }
+
     if (data) {
-      this.sessionId = data.id;
+      this.sessionId = data.id as string;
       this.trackActivity();
-      return data.id;
+      return data.id as string;
     }
     return null;
   }
 
   // Update session activity
   private trackActivity() {
-    // Clear existing timeout
-    if (this.inactivityTimeout) {
-      clearTimeout(this.inactivityTimeout);
-    }
+    if (this.inactivityTimeout) clearTimeout(this.inactivityTimeout);
 
-    // Update last active time
     this.lastActiveTime = Date.now();
 
     if (this.sessionId) {
+      // Fire and forget; log on failure so we "use" the error.
       this.supabase
         .from('user_sessions')
         .update({ last_active_at: new Date().toISOString() })
         .eq('id', this.sessionId)
-        .then();
+        .then(({ error }) => {
+          if (error) console.error('[analytics] trackActivity error:', error);
+        });
     }
 
-    // Set inactivity timeout (5 minutes)
+    // Inactivity timeout (5 minutes)
     this.inactivityTimeout = setTimeout(() => {
-      this.endSession();
+      void this.endSession();
     }, 5 * 60 * 1000);
   }
 
@@ -52,8 +58,8 @@ export class AnalyticsService {
     if (!this.sessionId) return;
 
     const duration = Math.floor((Date.now() - this.lastActiveTime) / 1000);
-    
-    await this.supabase
+
+    const { error } = await this.supabase
       .from('user_sessions')
       .update({
         ended_at: new Date().toISOString(),
@@ -61,25 +67,35 @@ export class AnalyticsService {
       })
       .eq('id', this.sessionId);
 
+    if (error) console.error('[analytics] endSession error:', error);
+
     this.sessionId = null;
   }
 
   // Track video view
   async trackVideoView(userId: string, videoId: string) {
     await this.trackEvent(userId, 'video_view', { video_id: videoId });
-    
-    // Create or get video analytics record
-    const { data: existing } = await this.supabase
+
+    const { data: existing, error } = await this.supabase
       .from('video_analytics')
       .select('id')
       .eq('user_id', userId)
       .eq('video_id', videoId)
-      .single();
+      .maybeSingle();
+
+    if (error) {
+      console.error('[analytics] trackVideoView select error:', error);
+      return;
+    }
 
     if (!existing) {
-      await this.supabase
+      const { error: insertError } = await this.supabase
         .from('video_analytics')
         .insert({ user_id: userId, video_id: videoId });
+
+      if (insertError) {
+        console.error('[analytics] trackVideoView insert error:', insertError);
+      }
     }
   }
 
@@ -93,18 +109,23 @@ export class AnalyticsService {
   ) {
     const completed = currentPosition >= totalDuration * 0.95;
 
-    await this.supabase
+    const { error: upsertError } = await this.supabase
       .from('video_analytics')
-      .upsert({
-        user_id: userId,
-        video_id: videoId,
-        watch_duration_seconds: watchedSeconds,
-        last_position_seconds: currentPosition,
-        completed,
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id,video_id',
-      });
+      .upsert(
+        {
+          user_id: userId,
+          video_id: videoId,
+          watch_duration_seconds: watchedSeconds,
+          last_position_seconds: currentPosition,
+          completed,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,video_id' }
+      );
+
+    if (upsertError) {
+      console.error('[analytics] trackVideoWatchTime upsert error:', upsertError);
+    }
 
     await this.trackEvent(userId, 'video_watch_time', {
       video_id: videoId,
@@ -119,39 +140,43 @@ export class AnalyticsService {
   }
 
   // Generic event tracking
-  async trackEvent(
-    userId: string,
-    eventType: string,
-    metadata: Record<string, any> = {}
-  ) {
-    this.trackActivity(); // Update session activity
+  async trackEvent(userId: string, eventType: string, metadata: AnalyticsMetadata = {}) {
+    this.trackActivity();
 
-    await this.supabase
+    const { error } = await this.supabase
       .from('analytics_events')
       .insert({
         user_id: userId,
         event_type: eventType,
-        metadata,
+        metadata, // JSONB column recommended
       });
+
+    if (error) console.error('[analytics] trackEvent error:', error);
   }
 
   // Setup listeners for activity
   setupActivityListeners() {
     if (typeof window === 'undefined') return;
 
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
-    events.forEach(event => {
-      window.addEventListener(event, () => this.trackActivity(), { passive: true });
+    const events: Array<keyof WindowEventMap> = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+    const handler = () => this.trackActivity();
+
+    events.forEach((evt) => {
+      window.addEventListener(evt, handler, { passive: true });
     });
 
     // Track page visibility
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
-        this.endSession();
+        void this.endSession();
       } else {
         // Restart session when page becomes visible
-        const userId = this.supabase.auth.getUser().then(({ data }) => {
-          if (data.user) this.startSession(data.user.id);
+        this.supabase.auth.getUser().then(({ data, error }) => {
+          if (error) {
+            console.error('[analytics] getUser error:', error);
+            return;
+          }
+          if (data.user) void this.startSession(data.user.id);
         });
       }
     });

@@ -21,10 +21,27 @@ export default function LoginPage() {
         email: email.toLowerCase().trim(),
         password,
       })
-
       if (loginError) throw loginError
+      if (!data.user || !data.session) throw new Error('Missing session after login')
 
-      if (data.session) {
+      // Check if this user is an admin
+      const { data: adminRow, error: adminErr } = await supabase
+        .from('admin_users')
+        .select('user_id')
+        .eq('user_id', data.user.id)
+        .maybeSingle()
+
+      // If query errors, fall back to normal feed
+      if (adminErr) {
+        console.warn('admin check failed:', adminErr)
+        window.location.href = '/feed'
+        return
+      }
+
+      // Redirect based on presence in admin_users
+      if (adminRow) {
+        window.location.href = '/admin'
+      } else {
         window.location.href = '/feed'
       }
     } catch (err) {
@@ -42,9 +59,9 @@ export default function LoginPage() {
         <Link href="/" className="text-purple-200 hover:text-white mb-6 inline-block">
           ← Back
         </Link>
-        
+
         <h2 className="text-3xl font-bold text-white mb-6">Welcome Back</h2>
-        
+
         <form onSubmit={handleLogin} className="space-y-4">
           {error && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-200 text-sm">

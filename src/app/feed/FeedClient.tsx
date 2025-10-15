@@ -850,7 +850,7 @@ const toggleLike = async (item: FeedItem) => {
         {/* Floating Action Buttons */}
         <div className="absolute bottom-6 right-6 z-20 md:z-30 flex flex-col gap-3 pointer-events-none">
           <div className="pointer-events-auto">
-            <VideoUpload userId={user.id} onUploadSuccess={loadVideos} />
+            <VideoUpload userId={user.id} subjects={subjects} onUploadSuccess={loadVideos} />
           </div>
           <div className="pointer-events-auto">
             <CreatePost userId={user.id} subjects={subjects} onPostCreated={loadPosts} />
@@ -870,7 +870,7 @@ const toggleLike = async (item: FeedItem) => {
                 Be the first to share something!
               </p>
               <div className="flex gap-3">
-                <VideoUpload userId={user.id} onUploadSuccess={loadVideos} />
+                <VideoUpload userId={user.id} subjects={subjects} onUploadSuccess={loadVideos} />
                 <CreatePost userId={user.id} subjects={subjects} onPostCreated={loadPosts} />
               </div>
             </div>
