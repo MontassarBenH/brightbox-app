@@ -132,74 +132,56 @@ export default function FeedClient({ user }: { user: User }) {
 
   // IntersectionObserver: auto play/pause current video
   useEffect(() => {
+  const enableAutoplay = () => {
     const container = feedContainerRef.current;
     if (!container) return;
 
-    const io = new IntersectionObserver(
-      (entries) => {
-        const now = Date.now();
-
-        // pick the most-visible section
-        let best: { id: string; ratio: number } | null = null;
-
-        for (const entry of entries) {
-          const el = entry.target as HTMLElement;
-          const id = el.getAttribute('data-feed-id');
-          if (!id) continue;
-
-          const ratio = entry.isIntersecting ? entry.intersectionRatio : 0;
-          if (!best || ratio > best.ratio) best = { id, ratio };
-        }
-
-        // we only switch if the best is clearly in view
-        if (!best || best.ratio < 0.3) return;
-
-        // don't fight a very recent manual tap
-        if (justToggledRef.current && justToggledRef.current.id === best.id && now < justToggledRef.current.until) {
-          return;
-        }
-
-        const nextId = best.id;
-        const prevId = activeIdRef.current;
-
-        if (nextId === prevId) return; // already active
-
-        // pause previous
-        if (prevId) {
-          const prevV = videoRefs.current.get(prevId);
-          if (prevV) prevV.pause();
-        }
-
-        // play next from the start
-        const v = videoRefs.current.get(nextId);
-        if (v) {
-          try { v.pause(); v.currentTime = 0; } catch {}
-          v.muted = true;
-          v.playsInline = true;
-          v.setAttribute('playsinline', '');
-          v.setAttribute('webkit-playsinline', '');
-          // if not ready, try to load first; then play
-          if (v.readyState < 2) v.load();
-          v.play().catch(() => {});
-          activeIdRef.current = nextId;
-        }
-
-        // also make sure all *other* videos are paused
-        videoRefs.current.forEach((vid, id) => {
-          if (id !== nextId) vid.pause();
-        });
-      },
-      {
-        root: container,
-        threshold: [0.0, 0.3, 0.6, 1.0],
-        rootMargin: '-10% 0px -10% 0px',
-      }
+    // Find the most visible video
+    const sections = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-feed-id]')
     );
 
-    const sections = container.querySelectorAll('[data-feed-id]');
-    sections.forEach((s) => io.observe(s));
-    return () => io.disconnect();
-  }, [videos, posts]);
+    const middle = container.scrollTop + container.clientHeight / 2;
+    let bestId: string | null = null;
+    let bestDelta = Infinity;
+
+    for (const s of sections) {
+      const rect = s.getBoundingClientRect();
+      const top = rect.top + container.scrollTop;
+      const center = top + rect.height / 2;
+      const delta = Math.abs(center - middle);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        bestId = s.dataset.feedId ?? s.getAttribute('data-feed-id');
+      }
+    }
+
+    // Play the most visible video
+    if (bestId) {
+      const v = videoRefs.current.get(bestId);
+      if (v) {
+        v.muted = true;
+        v.playsInline = true;
+        v.setAttribute('playsinline', '');
+        v.setAttribute('webkit-playsinline', '');
+        v.play().catch(() => {});
+      }
+    }
+  };
+
+  // Listen for any user interaction
+  const events = ['touchstart', 'click', 'scroll'];
+  events.forEach(event => {
+    window.addEventListener(event, enableAutoplay, { once: true, passive: true });
+  });
+
+  return () => {
+    events.forEach(event => {
+      window.removeEventListener(event, enableAutoplay);
+    });
+  };
+}, []);
+
 
 
 
@@ -747,23 +729,28 @@ const toggleLike = async (item: FeedItem) => {
                         {/* Video */}
                         <video
                           ref={(el) => {
-                            if (el) videoRefs.current.set(`${item.type}-${item.id}`, el);
-                            else videoRefs.current.delete(`${item.type}-${item.id}`);
+                            if (el) {
+                              videoRefs.current.set(`${item.type}-${item.id}`, el);
+                              // iOS specific: set attributes immediately
+                              el.muted = true;
+                              el.playsInline = true;
+                              el.setAttribute('playsinline', '');
+                              el.setAttribute('webkit-playsinline', '');
+                              el.setAttribute('x-webkit-airplay', 'allow');
+                            } else {
+                              videoRefs.current.delete(`${item.type}-${item.id}`);
+                            }
                           }}
                           src={v.mux_playback_id}
                           className="max-h-full max-w-full"
-                        
-                          autoPlay
                           muted
                           playsInline
-                     
                           loop
                           controls={false}
                           preload="auto"
-                         onClick={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
-                         onTouchEnd={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
+                          onClick={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
+                          onTouchEnd={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
                         />
-
 
                         {/* Center Play/Pause overlay icon */}
                         <div
