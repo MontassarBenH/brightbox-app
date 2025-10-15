@@ -25,6 +25,16 @@ import { Comments } from '@/components/Comments';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { motion, AnimatePresence } from 'framer-motion'
+
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -130,6 +140,33 @@ export default function FeedClient({ user }: { user: User }) {
   const [overlayVisibleId, setOverlayVisibleId] = useState<string | null>(null);
   const [overlayIcon, setOverlayIcon] = useState<'play' | 'pause'>('play');
   const overlayTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+
+  const [isTyping, setIsTyping] = useState(false);
+
+useEffect(() => {
+  if (!newMessage) return setIsTyping(false);
+  setIsTyping(true);
+  const t = setTimeout(() => setIsTyping(false), 1200);
+  return () => clearTimeout(t);
+}, [newMessage]);
+
+
+useEffect(() => {
+  const el = document.querySelector('#chat-scroll') as HTMLElement | null;
+  if (!el) return;
+
+  const onScroll = () => {
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+    setShowJumpToBottom(!nearBottom);
+  };
+  el.addEventListener('scroll', onScroll, { passive: true });
+  return () => el.removeEventListener('scroll', onScroll);
+}, []);
+
+const jumpToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+
 
   // IntersectionObserver: auto play/pause current video
 useEffect(() => {
@@ -567,6 +604,64 @@ const toggleLike = async (item: FeedItem) => {
 
   const userInitial = (user.email || 'U')[0]?.toUpperCase();
 
+  const groupByDay = (items: Message[]) => {
+  const map = new Map<string, Message[]>();
+  items.forEach(m => {
+    const d = new Date(m.created_at);
+    const key = d.toLocaleDateString();
+    const arr = map.get(key) ?? [];
+    arr.push(m);
+    map.set(key, arr);
+  });
+  return Array.from(map.entries()); // [ [date, msgs[]], ... ]
+};
+
+// Reusable bubble
+const ChatBubble = ({ m, isOwn }: { m: Message; isOwn: boolean }) => {
+  const senderName = m.profiles?.username || m.profiles?.email || 'User';
+  const initial = senderName[0]?.toUpperCase();
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.15 }}
+      className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
+    >
+      <div className={`max-w-[80%] md:max-w-[75%]`}>
+        {!isOwn && (
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-white text-xs grid place-items-center">
+              {initial}
+            </div>
+            <span className="text-[11px] text-gray-500">{senderName}</span>
+          </div>
+        )}
+        <div
+          className={[
+            "px-4 py-2 rounded-2xl shadow-sm backdrop-blur",
+            isOwn
+              ? "bg-gradient-to-br from-purple-600 to-indigo-600 text-white rounded-tr-sm"
+              : "bg-white/80 text-gray-900 border border-black/5 rounded-tl-sm"
+          ].join(' ')}
+        >
+          <p className="text-sm leading-relaxed">{m.content}</p>
+          <span
+            className={[
+              "block mt-1 text-[10px]",
+              isOwn ? "text-white/70" : "text-gray-500"
+            ].join(' ')}
+          >
+            {formatTime(m.created_at)}
+          </span>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+
   return (
   <div className="flex flex-col h-screen bg-gray-50">
     {/* Header with auto-hide */}
@@ -575,87 +670,137 @@ const toggleLike = async (item: FeedItem) => {
         headerVisible ? 'translate-y-0' : '-translate-y-full'
       }`}
     >
-      <div className="max-w-6xl mx-auto flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="bg-gradient-to-br from-purple-600 to-indigo-600 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg">
-            <VideoIcon className="text-white w-5 h-5" />
-          </div>
-          <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
-            SchoolFeed
-          </h1>
-        </div>
+      <div className="w-full">
+  {/* Top bar */}
+  <div className="h-[60px] flex items-center justify-between px-4 md:px-8
+                  bg-white/70 supports-[backdrop-filter]:backdrop-blur-xl
+                  border-b border-black/5">
+    {/* Left: brand */}
+    <div className="flex items-center gap-3">
+      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 
+                      grid place-items-center shadow-sm">
+        <VideoIcon className="w-5 h-5 text-white" />
+      </div>
+      <div className="leading-tight">
+        <h1 className="text-lg md:text-xl font-bold tracking-tight">SchoolFeed</h1>
+        <p className="text-[11px] text-gray-500 hidden md:block">Learn • Share • Shine</p>
+      </div>
+    </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="md:hidden"
-            onClick={() => setMobileChatOpen(true)}
-          >
-            <MessageCircle className="w-5 h-5" />
+    {/* Center: search (collapses on mobile) */}
+    <button
+      type="button"
+      className="hidden md:flex group items-center gap-2 h-10 w-[340px] rounded-xl 
+                 bg-white/70 border border-black/5 px-3 text-sm text-gray-600 
+                 hover:border-gray-300 transition"
+      // onClick={() => setCommandOpen(true)}
+      aria-label="Open search"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" className="opacity-70"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 5l1.5-1.5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5S14 7.01 14 9.5S11.99 14 9.5 14"/></svg>
+      <span className="text-gray-500">Search posts, videos, people…</span>
+      <span className="ml-auto text-[10px] text-gray-400 border px-1.5 py-0.5 rounded-md">⌘K</span>
+    </button>
+
+    {/* Right: actions */}
+    <div className="flex items-center gap-1.5">
+      <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileChatOpen(true)}>
+        <MessageCircle className="w-5 h-5" />
+      </Button>
+
+      {/* Filter drawer trigger (as-is) */}
+      <Sheet>
+        <SheetTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label="Open filters">
+            <Filter className="w-5 h-5" />
           </Button>
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="sm">
-                <Filter className="w-5 h-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right">
-              <SheetHeader>
-                <SheetTitle>Filter by Subject</SheetTitle>
-              </SheetHeader>
-              <div className="mt-6 space-y-2">
-                <Button
-                  variant={selectedSubject === 'all' ? 'default' : 'outline'}
-                  className="w-full justify-start"
-                  onClick={() => setSelectedSubject('all')}
+        </SheetTrigger>
+        <SheetContent side="right">
+          <SheetHeader><SheetTitle>Filter by Subject</SheetTitle></SheetHeader>
+          {/* your filter buttons… */}
+        </SheetContent>
+      </Sheet>
+
+      {/* Notifications */}
+      <div className="relative">
+        <Button variant="ghost" size="icon" aria-label="Notifications">
+          {/* Swap for a bell icon if you prefer */}
+          <Heart className="w-5 h-5" />
+        </Button>
+        {/* Tiny unread dot */}
+        <span className="absolute right-2 top-2 w-2 h-2 rounded-full bg-rose-500" />
+      </div>
+          <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="outline-none rounded-full focus-visible:ring-2 focus-visible:ring-purple-500"
+                  aria-label="Open user menu"
                 >
-                  All Subjects
-                </Button>
-                {subjects.map((subject) => (
-                  <Button
-                    key={subject.id}
-                    variant={selectedSubject === subject.id ? 'default' : 'outline'}
-                    className="w-full justify-start"
-                    onClick={() => setSelectedSubject(subject.id)}
-                  >
-                    <span className="mr-2">{subject.icon}</span>
-                    {subject.name}
-                  </Button>
-                ))}
-              </div>
-            </SheetContent>
-          </Sheet>
-          <Avatar className="w-8 h-8 cursor-pointer" onClick={handleLogout}>
-            <AvatarImage src="" alt={user.email ?? 'user'} />
-            <AvatarFallback>{userInitial}</AvatarFallback>
-          </Avatar>
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src="" alt={user.email ?? 'user'} />
+                    <AvatarFallback>{userInitial}</AvatarFallback>
+                  </Avatar>
+                </button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent align="end" sideOffset={8} className="w-48">
+                <DropdownMenuLabel className="truncate">
+                  {user.email ?? 'Account'}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href={`/profile/${user.id}`} className="w-full">
+                    Profile
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  className="text-red-600 focus:text-red-600"
+                >
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
         </div>
       </div>
 
-      {/* Subject Pills */}
-      <div className="max-w-6xl mx-auto mt-3 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+       {/* Subject pills row with fade edges */}
+  <div className="relative">
+    {/* gradient fades */}
+    <div className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-white to-transparent" />
+    <div className="pointer-events-none absolute right-0 top-0 h-full w-6 bg-gradient-to-l from-white to-transparent" />
+    
+    <div className="max-w-6xl mx-auto px-4 md:px-8">
+      <div className="mt-2 flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide">
+        {/* “All” pill */}
         <Badge
           variant={selectedSubject === 'all' ? 'default' : 'outline'}
-          className="cursor-pointer whitespace-nowrap"
+          className="cursor-pointer whitespace-nowrap snap-start"
           onClick={() => setSelectedSubject('all')}
         >
           All
         </Badge>
-        {subjects.map((subject) => (
-          <Badge
-            key={subject.id}
-            variant={selectedSubject === subject.id ? 'default' : 'outline'}
-            className="cursor-pointer whitespace-nowrap"
-            onClick={() => setSelectedSubject(subject.id)}
-            style={{
-              backgroundColor: selectedSubject === subject.id ? subject.color : undefined,
-            }}
+
+        {/* Dynamic subject pills */}
+        {subjects.map((s) => (
+          <button
+            key={s.id}
+            className={`px-3 py-1.5 rounded-full border text-sm snap-start
+              ${selectedSubject === s.id 
+                ? 'bg-gray-900 text-white border-gray-900' 
+                : 'bg-white border-black/10 text-gray-700 hover:border-gray-300'}`}
+            style={{ backgroundColor: selectedSubject === s.id ? s.color : undefined }}
+            onClick={() => setSelectedSubject(s.id)}
           >
-            {subject.icon} {subject.name}
-          </Badge>
+            <span className="mr-1.5">{s.icon}</span>{s.name}
+          </button>
         ))}
       </div>
+    </div>
+  </div>
+</div>
     </header>
 
     {/* Main Content */}
@@ -913,158 +1058,219 @@ const toggleLike = async (item: FeedItem) => {
         </div>
       </main>
 
-      {/* Desktop Chat */}
-      <aside className="hidden md:flex w-96 border-l bg-white flex-col h-full">
-        <div className="border-b p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MessageCircle className="w-5 h-5 text-purple-600" />
-            <h3 className="font-semibold">School Chat</h3>
-          </div>
-          <Badge variant="secondary">{messages.length}</Badge>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 ? (
-            <div className="text-center text-gray-500 text-sm mt-8">
-              No messages yet. Say hi! 👋
+      {/* Desktop Chat – modern glass panel */}
+        <aside className="hidden md:flex w-[24rem] border-l bg-white/70 backdrop-blur-xl supports-[backdrop-filter]:bg-white/50 flex-col h-full">
+          {/* Header */}
+          <div className="border-b p-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 grid place-items-center text-white shadow">
+                <MessageCircle className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-semibold leading-tight">School Chat</h3>
+                <p className="text-xs text-gray-500 -mt-0.5">Classwide messages</p>
+              </div>
             </div>
-          ) : (
-            messages.map((m) => {
-              const isOwn = m.user_id === user.id;
-              const senderName = m.profiles?.username || m.profiles?.email || 'User';
-              const initial = senderName[0]?.toUpperCase();
+            <Badge variant="secondary">{messages.length}</Badge>
+          </div>
 
-              return (
-                <div key={m.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[80%] px-4 py-2 rounded-lg ${
-                      isOwn
-                        ? 'bg-purple-600 text-white rounded-br-none'
-                        : 'bg-gray-100 text-gray-800 rounded-bl-none'
-                    }`}
-                  >
-                    {!isOwn && (
-                      <div className="flex items-center mb-1">
-                        <Avatar className="w-6 h-6 mr-2">
-                          <AvatarFallback className="text-xs">{initial}</AvatarFallback>
-                        </Avatar>
-                        <p className="text-xs font-semibold text-gray-500">{senderName}</p>
-                      </div>
-                    )}
-                    <p className="text-sm">{m.content}</p>
-                    <p className={`text-xs mt-1 ${isOwn ? 'text-purple-200' : 'text-gray-500'}`}>
-                      {formatTime(m.created_at)}
-                    </p>
-                  </div>
+<div id="chat-scroll" className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            {messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-100 to-indigo-100 grid place-items-center mb-4">
+                  <MessageCircle className="w-7 h-7 text-purple-500" />
                 </div>
-              );
-            })
-          )}
-          <div ref={messagesEndRef} />
-        </div>
+                <p className="text-gray-600 font-medium">No messages yet</p>
+                <p className="text-gray-400 text-sm">Be the first to say hi 👋</p>
+              </div>
+            ) : (
+              <AnimatePresence initial={false}>
+                {groupByDay(messages).map(([date, chunk]) => (
+                  <motion.div key={date} layout className="space-y-3">
+                    {/* Date chip */}
+                    <div className="sticky top-0 z-10 flex justify-center">
+                      <span className="text-[11px] px-3 py-1 rounded-full bg-white/70 border border-black/5 shadow-sm text-gray-600 backdrop-blur">
+                        {date}
+                      </span>
+                    </div>
+                    <div className="relative group">
+                    {/* Bubbles */}
+                    {chunk.map((m) => {
+                      const isOwn = m.user_id === user.id;
+                      return <ChatBubble key={m.id} m={m} isOwn={isOwn} />;
+                    })} 
+                    <div className="absolute -top-3 right-2 opacity-0 group-hover:opacity-100 transition
+                                    bg-white/90 backdrop-blur border border-black/5 rounded-full px-1">
+                      {['👍','🎉','❤️','🔥','👏'].map(e => (
+                        <button key={e} className="px-1.5 py-0.5 text-sm hover:scale-110 transition">{e}</button>
+                      ))}
+                    </div>
+                  </div>
 
-        <div className="border-t p-4">
-          <div className="flex gap-2">
-            <Input
-              placeholder="Type a message..."
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-              className="flex-1"
-            />
-            <Button onClick={sendMessage} disabled={!newMessage.trim()} size="icon">
-              <Send className="h-4 w-4" />
-            </Button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            )}
+            <div ref={messagesEndRef} />
           </div>
         </div>
-      </aside>
+
+     {showJumpToBottom && (
+        <button
+          onClick={jumpToBottom}
+          className="absolute bottom-20 right-4 md:right-6 px-3 py-1.5 rounded-full
+                    bg-gray-900 text-white text-xs shadow-lg"
+          aria-label="Jump to newest"
+        >
+          New messages ↓
+        </button>
+      )}
+
+      {isTyping && (
+  <div className="flex items-center gap-2 text-gray-500 text-xs">
+    <div className="w-5 h-5 rounded-full bg-white/80 border border-black/5 grid place-items-center">
+      <span className="animate-pulse">…</span>
+    </div>
+    Someone is typing
+  </div>
+)}
+
+          {/* Composer */}
+          <div className="border-t p-3">
+            <div className="flex items-center gap-2 bg-white/80 backdrop-blur px-2 py-2 rounded-xl shadow-sm border border-black/5">
+              <Input
+                placeholder="Write a message…"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                className="border-0 bg-transparent focus-visible:ring-0"
+              />
+              <Button onClick={sendMessage} disabled={!newMessage.trim()} size="icon" className="rounded-xl">
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </aside>
+
     </div>
 
-    {/* Mobile Chat Overlay */}
-    {mobileChatOpen && (
-      <div className="fixed inset-0 z-50 bg-white md:hidden flex flex-col">
-        <div className="border-b p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MessageCircle className="w-5 h-5 text-purple-600" />
-            <h3 className="font-semibold">School Chat</h3>
-            <Badge variant="secondary" className="ml-2">{messages.length}</Badge>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => setMobileChatOpen(false)}>
-            <X className="w-4 h-4 mr-1" /> Close
-          </Button>
+    {/* Mobile Chat – full-screen sheet style */}
+{mobileChatOpen && (
+  <div className="fixed inset-0 z-50 md:hidden flex flex-col bg-gradient-to-b from-white via-white/80 to-white/70 backdrop-blur-xl">
+    {/* Header */}
+    <div className="border-b p-4 flex items-center justify-between bg-white/80 backdrop-blur">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 grid place-items-center text-white shadow">
+          <MessageCircle className="w-4 h-4" />
         </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 ? (
-            <div className="text-center text-gray-500 text-sm mt-8">
-              No messages yet. Say hi! 👋
-            </div>
-          ) : (
-            messages.map((m) => {
-              const isOwn = m.user_id === user.id;
-              const senderName = m.profiles?.username || m.profiles?.email || 'User';
-              const initial = senderName[0]?.toUpperCase();
-              return (
-                <div key={m.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[85%] px-4 py-2 rounded-lg ${
-                      isOwn
-                        ? 'bg-purple-600 text-white rounded-br-none'
-                        : 'bg-gray-100 text-gray-800 rounded-bl-none'
-                    }`}
-                  >
-                    {!isOwn && (
-                      <div className="flex items-center mb-1">
-                        <Avatar className="w-6 h-6 mr-2">
-                          <AvatarFallback className="text-xs">{initial}</AvatarFallback>
-                        </Avatar>
-                        <p className="text-xs font-semibold text-gray-500">{senderName}</p>
-                      </div>
-                    )}
-                    <p className="text-sm">{m.content}</p>
-                    <p className={`text-xs mt-1 ${isOwn ? 'text-purple-200' : 'text-gray-500'}`}>
-                      {formatTime(m.created_at)}
-                    </p>
-                  </div>
-                </div>
-              );
-            })
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <div className="border-t p-4">
-          <div className="flex gap-2">
-            <Input
-              placeholder="Type a message..."
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-              className="flex-1"
-            />
-            <Button
-              onClick={() => {
-                sendMessage();
-              }}
-              disabled={!newMessage.trim()}
-              size="icon"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
+        <div>
+          <h3 className="font-semibold leading-tight">School Chat</h3>
+          <Badge variant="secondary" className="ml-0 mt-0.5">{messages.length}</Badge>
         </div>
       </div>
-    )}
+      <Button variant="outline" size="sm" onClick={() => setMobileChatOpen(false)}>
+        <X className="w-4 h-4 mr-1" /> Close
+      </Button>
+    </div>
+
+<div id="chat-scroll" className="flex-1 overflow-y-auto p-4 space-y-6">
+    {/* Messages */}
+    <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      {messages.length === 0 ? (
+        <div className="h-full flex flex-col items-center justify-center text-center">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-100 to-indigo-100 grid place-items-center mb-4">
+            <MessageCircle className="w-7 h-7 text-purple-500" />
+          </div>
+          <p className="text-gray-600 font-medium">No messages yet</p>
+          <p className="text-gray-400 text-sm">Say hi 👋</p>
+        </div>
+      ) : (
+        <AnimatePresence initial={false}>
+          {groupByDay(messages).map(([date, chunk]) => (
+            <motion.div key={date} layout className="space-y-3">
+              <div className="sticky top-0 z-10 flex justify-center">
+                <span className="text-[11px] px-3 py-1 rounded-full bg-white/80 border border-black/5 shadow-sm text-gray-600 backdrop-blur">
+                  {date}
+                </span>
+              </div>
+               <div className="relative group">
+                    {/* Bubbles */}
+                    {chunk.map((m) => {
+                      const isOwn = m.user_id === user.id;
+                      return <ChatBubble key={m.id} m={m} isOwn={isOwn} />;
+                    })} 
+                    <div className="absolute -top-3 right-2 opacity-0 group-hover:opacity-100 transition
+                                    bg-white/90 backdrop-blur border border-black/5 rounded-full px-1">
+                      {['👍','🎉','❤️','🔥','👏'].map(e => (
+                        <button key={e} className="px-1.5 py-0.5 text-sm hover:scale-110 transition">{e}</button>
+                      ))}
+                    </div>
+                  </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      )}
+      <div ref={messagesEndRef} />
+    </div>
+  </div>
+
+  
+  {showJumpToBottom && (
+    <button
+      onClick={jumpToBottom}
+      className="absolute bottom-20 right-4 md:right-6 px-3 py-1.5 rounded-full
+                bg-gray-900 text-white text-xs shadow-lg"
+      aria-label="Jump to newest"
+    >
+      New messages ↓
+    </button>
+  )}
+
+  {isTyping && (
+    <div className="flex items-center gap-2 text-gray-500 text-xs">
+      <div className="w-5 h-5 rounded-full bg-white/80 border border-black/5 grid place-items-center">
+        <span className="animate-pulse">…</span>
+      </div>
+      Someone is typing
+    </div>
+  )}
+
+
+    {/* Composer */}
+    <div className="border-t p-3 bg-white/80 backdrop-blur">
+      <div className="flex items-center gap-2 bg-white px-2 py-2 rounded-xl shadow-sm border border-black/5">
+        <Input
+          placeholder="Write a message…"
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              sendMessage();
+            }
+          }}
+          className="border-0 bg-transparent focus-visible:ring-0"
+        />
+        <Button
+          onClick={sendMessage}
+          disabled={!newMessage.trim()}
+          size="icon"
+          className="rounded-xl"
+        >
+          <Send className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+
 
     {/* Delete Confirmation Dialog */}
     <AlertDialog open={!!itemToDelete} onOpenChange={(open) => { if (!open) setItemToDelete(null); }}>

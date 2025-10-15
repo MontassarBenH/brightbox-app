@@ -9,9 +9,10 @@ export const revalidate = 0
 export default async function ProfilePage({
   params,
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>;
 }) {
-  const userId = params.id
+  const { id: userId } = await params; 
+
   const supabase = await createServerSupabaseClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -122,7 +123,7 @@ if (isOwnProfile) {
         </div>
 
         <Link href="/feed" className="text-sm text-purple-600 hover:underline">
-          ← Back to feed
+          ← Back
         </Link>
       </div>
 
