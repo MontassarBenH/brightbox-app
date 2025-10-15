@@ -14,6 +14,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import Link from 'next/link';
+import { ReportDialog } from './ReportDialog';
 
 type Comment = {
   id: string;
@@ -34,7 +35,13 @@ interface CommentsProps {
   onCountChange: (newCount: number) => void;
 }
 
-export function Comments({ itemId, itemType, userId, commentsCount, onCountChange }: CommentsProps) {
+export function Comments({
+  itemId,
+  itemType,
+  userId,
+  commentsCount,
+  onCountChange,
+}: CommentsProps) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
@@ -48,6 +55,7 @@ export function Comments({ itemId, itemType, userId, commentsCount, onCountChang
 
   const loadComments = useCallback(async () => {
     const column = itemType === 'video' ? 'video_id' : 'post_id';
+
     const { data: commentsData, error } = await supabase
       .from('comments')
       .select('*')
@@ -56,14 +64,14 @@ export function Comments({ itemId, itemType, userId, commentsCount, onCountChang
 
     if (error || !commentsData) return;
 
-    const userIds = [...new Set(commentsData.map(c => c.user_id))];
+    const userIds = [...new Set(commentsData.map((c) => c.user_id))];
     const { data: profilesData } = await supabase
       .from('profiles')
       .select('id, username, email')
       .in('id', userIds);
 
-    const profilesMap = new Map((profilesData ?? []).map(p => [p.id, p]));
-    const combined = commentsData.map(comment => ({
+    const profilesMap = new Map((profilesData ?? []).map((p) => [p.id, p]));
+    const combined = commentsData.map((comment) => ({
       ...comment,
       profiles: profilesMap.get(comment.user_id) || null,
     }));
@@ -73,27 +81,27 @@ export function Comments({ itemId, itemType, userId, commentsCount, onCountChang
   }, [supabase, itemId, itemType, onCountChange]);
 
   useEffect(() => {
-    if (open) {
-      loadComments();
+    if (!open) return;
 
-      const channel = supabase
-        .channel(`comments-${itemType}-${itemId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'comments',
-            filter: `${itemType}_id=eq.${itemId}`,
-          },
-          () => loadComments()
-        )
-        .subscribe();
+    loadComments();
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
+    const channel = supabase
+      .channel(`comments-${itemType}-${itemId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'comments',
+          filter: `${itemType}_id=eq.${itemId}`,
+        },
+        () => loadComments()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [open, supabase, loadComments, itemId, itemType]);
 
   useEffect(() => {
@@ -102,8 +110,8 @@ export function Comments({ itemId, itemType, userId, commentsCount, onCountChang
 
   const addComment = async () => {
     if (!newComment.trim()) return;
-
     setLoading(true);
+
     try {
       const { error } = await supabase.from('comments').insert({
         user_id: userId,
@@ -113,7 +121,7 @@ export function Comments({ itemId, itemType, userId, commentsCount, onCountChang
 
       if (error) throw error;
 
-      // Update count in parent table
+      // bump count on parent
       await supabase
         .from(itemType === 'video' ? 'videos' : 'posts')
         .update({ comments_count: commentsCount + 1 })
@@ -121,8 +129,8 @@ export function Comments({ itemId, itemType, userId, commentsCount, onCountChang
 
       setNewComment('');
       loadComments();
-    } catch (error) {
-      console.error('Add comment error:', error);
+    } catch (err) {
+      console.error('Add comment error:', err);
     } finally {
       setLoading(false);
     }
@@ -130,22 +138,18 @@ export function Comments({ itemId, itemType, userId, commentsCount, onCountChang
 
   const deleteComment = async (commentId: string) => {
     try {
-      const { error } = await supabase
-        .from('comments')
-        .delete()
-        .eq('id', commentId);
-
+      const { error } = await supabase.from('comments').delete().eq('id', commentId);
       if (error) throw error;
 
-      // Update count
+      // lower count on parent (safeguard lower bound)
       await supabase
         .from(itemType === 'video' ? 'videos' : 'posts')
         .update({ comments_count: Math.max(0, commentsCount - 1) })
         .eq('id', itemId);
 
       loadComments();
-    } catch (error) {
-      console.error('Delete comment error:', error);
+    } catch (err) {
+      console.error('Delete comment error:', err);
     }
   };
 
@@ -167,6 +171,7 @@ export function Comments({ itemId, itemType, userId, commentsCount, onCountChang
           <span className="text-white text-xs mt-1 font-semibold">{commentsCount}</span>
         </button>
       </SheetTrigger>
+
       <SheetContent side="right" className="w-full sm:w-[400px] p-0 flex flex-col">
         <SheetHeader className="p-4 border-b">
           <SheetTitle className="flex items-center gap-2">
@@ -184,7 +189,8 @@ export function Comments({ itemId, itemType, userId, commentsCount, onCountChang
           ) : (
             comments.map((comment) => {
               const isOwn = comment.user_id === userId;
-              const username = comment.profiles?.username || comment.profiles?.email || 'User';
+              const username =
+                comment.profiles?.username || comment.profiles?.email || 'User';
               const initial = username[0]?.toUpperCase();
 
               return (
@@ -192,6 +198,7 @@ export function Comments({ itemId, itemType, userId, commentsCount, onCountChang
                   <Avatar className="w-8 h-8 flex-shrink-0">
                     <AvatarFallback className="text-xs">{initial}</AvatarFallback>
                   </Avatar>
+
                   <div className="flex-1 min-w-0">
                     <div className="bg-gray-100 rounded-lg p-3">
                       <div className="flex items-center justify-between mb-1">
@@ -201,17 +208,34 @@ export function Comments({ itemId, itemType, userId, commentsCount, onCountChang
                         >
                           {username}
                         </Link>
-                        {isOwn && (
-                          <button
-                            onClick={() => deleteComment(comment.id)}
-                            className="text-red-500 hover:text-red-700 transition"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
+
+                        {/* Actions (Report for others, Delete for own) */}
+                        <div className="flex items-center gap-2">
+                          {!isOwn && (
+                            <ReportDialog
+                              reportedUserId={comment.user_id}
+                              reportedContentId={comment.id}
+                              contentType="comment"
+                              reporterUserId={userId}
+                            />
+                          )}
+
+                          {isOwn && (
+                            <button
+                              onClick={() => deleteComment(comment.id)}
+                              className="text-red-500 hover:text-red-700 transition"
+                              aria-label="Delete comment"
+                              title="Delete comment"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
+
                       <p className="text-sm text-gray-800">{comment.content}</p>
                     </div>
+
                     <p className="text-xs text-gray-500 mt-1 ml-1">
                       {formatTime(comment.created_at)}
                     </p>
@@ -220,10 +244,11 @@ export function Comments({ itemId, itemType, userId, commentsCount, onCountChang
               );
             })
           )}
+
           <div ref={commentsEndRef} />
         </div>
 
-        {/* Add Comment Input */}
+        {/* Add Comment */}
         <div className="border-t p-4">
           <div className="flex gap-2">
             <Input

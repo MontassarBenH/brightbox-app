@@ -59,12 +59,9 @@ export function VideoUpload({
       setProgress(30);
 
       // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('videos')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
+      const { error: uploadError } = await supabase.storage
+      .from('videos')
+      .upload(fileName, file, { cacheControl: '3600', upsert: false });
 
       if (uploadError) {
         throw uploadError;

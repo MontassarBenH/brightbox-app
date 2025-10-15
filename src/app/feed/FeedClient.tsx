@@ -12,6 +12,7 @@ import {
   Filter,
   X,
   Play,
+  Flag ,
   Pause
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -34,6 +35,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { motion, AnimatePresence } from 'framer-motion'
+import { ReportDialog } from '@/components/ReportDialog';
+
 
 import { Badge } from '@/components/ui/badge';
 import {
@@ -633,214 +636,210 @@ const toggleLike = async (item: FeedItem) => {
     arr.push(m);
     map.set(key, arr);
   });
-  return Array.from(map.entries()); // [ [date, msgs[]], ... ]
+  return Array.from(map.entries()); 
 };
-
-
-
 
   return (
   <div className="flex flex-col h-screen bg-gray-50">
     {/* Header with auto-hide */}
       <header
-        className={`fixed top-0 left-0 right-0 z-40 transition-transform duration-300 ${
-          headerVisible ? 'translate-y-0' : '-translate-y-full'
-        }`}
-      >
-        {/* Top bar */}
-        <div className="h-[60px] flex items-center justify-between px-4 md:px-8
-                        bg-white/70 supports-[backdrop-filter]:backdrop-blur-xl
-                        border-b border-black/5">
-          {/* Brand */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 grid place-items-center shadow-sm">
-              <VideoIcon className="w-5 h-5 text-white" />
-            </div>
-            <div className="leading-tight">
-              <h1 className="text-lg md:text-xl font-bold tracking-tight">SchoolFeed</h1>
-              <p className="text-[11px] text-gray-500 hidden md:block">Learn • Share • Shine</p>
-            </div>
-          </div>
-
-          {/* Search (desktop) */}
-          <button
-            type="button"
-            className="hidden md:flex group items-center gap-2 h-10 w-[340px] rounded-xl
-                      bg-white/70 border border-black/5 px-3 text-sm text-gray-600
-                      hover:border-gray-300 transition"
-            aria-label="Open search"
+            className={`fixed top-0 left-0 right-0 z-40 transition-transform duration-300 ${
+              headerVisible ? 'translate-y-0' : '-translate-y-full'
+            }`}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" className="opacity-70">
-              <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 5l1.5-1.5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5S14 7.01 14 9.5S11.99 14 9.5 14"/>
-            </svg>
-            <span className="text-gray-500">Search posts, videos, people…</span>
-            <span className="ml-auto text-[10px] text-gray-400 border px-1.5 py-0.5 rounded-md">⌘K</span>
-          </button>
+            {/* Top bar */}
+            <div className="h-[60px] flex items-center justify-between px-4 md:px-8
+                            bg-white/70 supports-[backdrop-filter]:backdrop-blur-xl
+                            border-b border-black/5">
+              {/* Brand */}
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 grid place-items-center shadow-sm">
+                  <VideoIcon className="w-5 h-5 text-white" />
+                </div>
+                <div className="leading-tight">
+                  <h1 className="text-lg md:text-xl font-bold tracking-tight">SchoolFeed</h1>
+                  <p className="text-[11px] text-gray-500 hidden md:block">Learn • Share • Shine</p>
+                </div>
+              </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-1.5">
-            {/* Open chat (mobile) */}
-            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileChatOpen(true)}>
-              <MessageCircle className="w-5 h-5" />
-            </Button>
+              {/* Search (desktop) */}
+              <button
+                type="button"
+                className="hidden md:flex group items-center gap-2 h-10 w-[340px] rounded-xl
+                          bg-white/70 border border-black/5 px-3 text-sm text-gray-600
+                          hover:border-gray-300 transition"
+                aria-label="Open search"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" className="opacity-70">
+                  <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 5l1.5-1.5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5S14 7.01 14 9.5S11.99 14 9.5 14"/>
+                </svg>
+                <span className="text-gray-500">Search posts, videos, people…</span>
+                <span className="ml-auto text-[10px] text-gray-400 border px-1.5 py-0.5 rounded-md">⌘K</span>
+              </button>
 
-            {/* Filter drawer */}
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Open filters">
-                  <Filter className="w-5 h-5" />
+              {/* Actions */}
+              <div className="flex items-center gap-1.5">
+                {/* Open chat (mobile) */}
+                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileChatOpen(true)}>
+                  <MessageCircle className="w-5 h-5" />
                 </Button>
-              </SheetTrigger>
 
-              {/* Compact mobile filter content */}
-              <SheetContent side="right" className="w-full sm:max-w-sm">
-                <SheetHeader>
-                  <SheetTitle>Filter by Subject</SheetTitle>
-                </SheetHeader>
+                {/* Filter drawer */}
+                <Sheet>
+                  <SheetTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label="Open filters">
+                      <Filter className="w-5 h-5" />
+                    </Button>
+                  </SheetTrigger>
 
-                {/* Pills: All + Clear */}
-                <div className="mt-4">
-                  <div className="flex gap-2 mb-2">
-                    <button
-                      onClick={() => setSelectedSubject('all')}
-                      className={`h-9 px-3 rounded-full border text-sm shrink-0
-                        ${selectedSubject === 'all'
-                          ? 'bg-gray-900 text-white border-gray-900'
-                          : 'bg-white border-black/10 text-gray-700 active:bg-gray-50'}`}
-                    >
-                      All
-                    </button>
+                  {/* Compact mobile filter content */}
+                  <SheetContent side="right" className="w-full sm:max-w-sm">
+                    <SheetHeader>
+                      <SheetTitle>Filter by Subject</SheetTitle>
+                    </SheetHeader>
 
-                    <button
-                      onClick={() => setSelectedSubject('all')}
-                      className="h-9 px-3 rounded-full border text-sm text-gray-600 bg-white border-black/10 active:bg-gray-50"
-                    >
-                      Clear
-                    </button>
-                  </div>
-
-                  {/* Subjects grid */}
-                  <div className="grid grid-cols-2 gap-2">
-                    {subjects.map((s) => {
-                      const active = selectedSubject === s.id;
-                      return (
+                    {/* Pills: All + Clear */}
+                    <div className="mt-4">
+                      <div className="flex gap-2 mb-2">
                         <button
-                          key={s.id}
-                          onClick={() => setSelectedSubject(s.id)}
-                          title={s.name}
-                          className={`h-9 px-3 rounded-full border text-sm text-left truncate
-                            ${active
-                              ? 'text-white border-transparent'
-                              : 'bg-white text-gray-800 border-black/10 active:bg-gray-50'}`}
-                          style={active ? { backgroundColor: s.color } : {}}
+                          onClick={() => setSelectedSubject('all')}
+                          className={`h-9 px-3 rounded-full border text-sm shrink-0
+                            ${selectedSubject === 'all'
+                              ? 'bg-gray-900 text-white border-gray-900'
+                              : 'bg-white border-black/10 text-gray-700 active:bg-gray-50'}`}
                         >
-                          <span className="inline-flex items-center gap-2 truncate">
-                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
-                            <span className="truncate">{s.icon} {s.name}</span>
-                          </span>
+                          All
                         </button>
-                      );
-                    })}
-                  </div>
+
+                        <button
+                          onClick={() => setSelectedSubject('all')}
+                          className="h-9 px-3 rounded-full border text-sm text-gray-600 bg-white border-black/10 active:bg-gray-50"
+                        >
+                          Clear
+                        </button>
+                      </div>
+
+                      {/* Subjects grid */}
+                      <div className="grid grid-cols-2 gap-2">
+                        {subjects.map((s) => {
+                          const active = selectedSubject === s.id;
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => setSelectedSubject(s.id)}
+                              title={s.name}
+                              className={`h-9 px-3 rounded-full border text-sm text-left truncate
+                                ${active
+                                  ? 'text-white border-transparent'
+                                  : 'bg-white text-gray-800 border-black/10 active:bg-gray-50'}`}
+                              style={active ? { backgroundColor: s.color } : {}}
+                            >
+                              <span className="inline-flex items-center gap-2 truncate">
+                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+                                <span className="truncate">{s.icon} {s.name}</span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex gap-2">
+                      <Button className="flex-1 h-9 rounded-full" onClick={() => {/* optional close if you add setOpen */}}>
+                        Done
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex-1 h-9 rounded-full"
+                        onClick={() => setSelectedSubject('all')}
+                      >
+                        Reset
+                      </Button>
+                    </div>
+                  </SheetContent>
+                </Sheet>
+
+                {/* Notifications (placeholder) */}
+                <div className="relative">
+                  <Button variant="ghost" size="icon" aria-label="Notifications">
+                    <Heart className="w-5 h-5" />
+                  </Button>
+                  <span className="absolute right-2 top-2 w-2 h-2 rounded-full bg-rose-500" />
                 </div>
 
-                <div className="mt-6 flex gap-2">
-                  <Button className="flex-1 h-9 rounded-full" onClick={() => {/* optional close if you add setOpen */}}>
-                    Done
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 h-9 rounded-full"
-                    onClick={() => setSelectedSubject('all')}
-                  >
-                    Reset
-                  </Button>
-                </div>
-              </SheetContent>
-            </Sheet>
+                {/* User menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="outline-none rounded-full focus-visible:ring-2 focus-visible:ring-purple-500"
+                      aria-label="Open user menu"
+                    >
+                      <Avatar className="w-8 h-8">
+                        <AvatarImage src="" alt={user.email ?? 'user'} />
+                        <AvatarFallback>{userInitial}</AvatarFallback>
+                      </Avatar>
+                    </button>
+                  </DropdownMenuTrigger>
 
-            {/* Notifications (placeholder) */}
-            <div className="relative">
-              <Button variant="ghost" size="icon" aria-label="Notifications">
-                <Heart className="w-5 h-5" />
-              </Button>
-              <span className="absolute right-2 top-2 w-2 h-2 rounded-full bg-rose-500" />
+                  <DropdownMenuContent align="end" sideOffset={8} className="w-48">
+                    <DropdownMenuLabel className="truncate">{user.email ?? 'Account'}</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href={`/profile/${user.id}`} className="w-full">Profile</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
+                      Log out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
 
-            {/* User menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="outline-none rounded-full focus-visible:ring-2 focus-visible:ring-purple-500"
-                  aria-label="Open user menu"
-                >
-                  <Avatar className="w-8 h-8">
-                    <AvatarImage src="" alt={user.email ?? 'user'} />
-                    <AvatarFallback>{userInitial}</AvatarFallback>
-                  </Avatar>
-                </button>
-              </DropdownMenuTrigger>
+            {/* Subject strip with fades (glassy + even padding) */}
+    <div className="relative bg-white/60 supports-[backdrop-filter]:backdrop-blur-xl border-b border-black/5">
+      {/* edge fades */}
+      <div className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-white/60 to-transparent" />
+      <div className="pointer-events-none absolute right-0 top-0 h-full w-6 bg-gradient-to-l from-white/60 to-transparent" />
 
-              <DropdownMenuContent align="end" sideOffset={8} className="w-48">
-                <DropdownMenuLabel className="truncate">{user.email ?? 'Account'}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href={`/profile/${user.id}`} className="w-full">Profile</Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-
-        {/* Subject strip with fades (glassy + even padding) */}
-<div className="relative bg-white/60 supports-[backdrop-filter]:backdrop-blur-xl border-b border-black/5">
-  {/* edge fades */}
-  <div className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-white/60 to-transparent" />
-  <div className="pointer-events-none absolute right-0 top-0 h-full w-6 bg-gradient-to-l from-white/60 to-transparent" />
-
-  <div className="max-w-6xl mx-auto px-4 md:px-8">
-    <div className="py-2 flex gap-2 overflow-x-auto snap-x snap-mandatory scrollbar-hide">
-      {/* All pill */}
-      <button
-        onClick={() => setSelectedSubject('all')}
-        className={`h-9 px-3 rounded-full border text-sm shrink-0 snap-start
-          ${selectedSubject === 'all'
-            ? 'bg-gray-900 text-white border-gray-900'
-            : 'bg-white/80 text-gray-800 border-black/10 hover:bg-white active:bg-gray-50'}`}
-      >
-        All
-      </button>
-
-      {/* Subjects */}
-      {subjects.map((s) => {
-        const active = selectedSubject === s.id;
-        return (
+      <div className="max-w-6xl mx-auto px-4 md:px-8">
+        <div className="py-2 flex gap-2 overflow-x-auto snap-x snap-mandatory scrollbar-hide">
+          {/* All pill */}
           <button
-            key={s.id}
-            onClick={() => setSelectedSubject(s.id)}
-            className={`h-9 px-3 rounded-full border text-sm shrink-0 snap-start max-w-[55vw] md:max-w-none
-              ${active
-                ? 'text-white border-transparent'
+            onClick={() => setSelectedSubject('all')}
+            className={`h-9 px-3 rounded-full border text-sm shrink-0 snap-start
+              ${selectedSubject === 'all'
+                ? 'bg-gray-900 text-white border-gray-900'
                 : 'bg-white/80 text-gray-800 border-black/10 hover:bg-white active:bg-gray-50'}`}
-            style={active ? { backgroundColor: s.color } : {}}
-            title={s.name}
           >
-            <span className="inline-flex items-center gap-1.5 truncate leading-none">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
-              <span className="truncate">{s.icon} {s.name}</span>
-            </span>
+            All
           </button>
-        );
-      })}
-    </div>
-  </div>
-</div>
 
+          {/* Subjects */}
+          {subjects.map((s) => {
+            const active = selectedSubject === s.id;
+            return (
+              <button
+                key={s.id}
+                onClick={() => setSelectedSubject(s.id)}
+                className={`h-9 px-3 rounded-full border text-sm shrink-0 snap-start max-w-[55vw] md:max-w-none
+                  ${active
+                    ? 'text-white border-transparent'
+                    : 'bg-white/80 text-gray-800 border-black/10 hover:bg-white active:bg-gray-50'}`}
+                style={active ? { backgroundColor: s.color } : {}}
+                title={s.name}
+              >
+                <span className="inline-flex items-center gap-1.5 truncate leading-none">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+                  <span className="truncate">{s.icon} {s.name}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
       </header>
 
 
@@ -1154,6 +1153,18 @@ const toggleLike = async (item: FeedItem) => {
                                     {initial}
                                   </div>
                                   <span className="text-[11px] text-gray-500">{senderName}</span>
+                                   {/* report button  */}
+                                    <ReportDialog
+                                      reportedUserId={m.user_id}
+                                      reportedContentId={m.id}
+                                      contentType="message"
+                                      reporterUserId={user.id}
+                                      trigger={
+                                        <button className="ml-auto text-gray-400 hover:text-red-500 transition">
+                                          <Flag className="w-3 h-3" />
+                                        </button>
+                                      }
+                                    />
                                 </div>
                               )}
 
@@ -1287,6 +1298,18 @@ const toggleLike = async (item: FeedItem) => {
                             {initial}
                           </div>
                           <span className="text-[11px] text-gray-500">{senderName}</span>
+                           {/* report button  */}
+                                    <ReportDialog
+                                      reportedUserId={m.user_id}
+                                      reportedContentId={m.id}
+                                      contentType="message"
+                                      reporterUserId={user.id}
+                                      trigger={
+                                        <button className="ml-auto text-gray-400 hover:text-red-500 transition">
+                                          <Flag className="w-3 h-3" />
+                                        </button>
+                                      }
+                                    />
                         </div>
                       )}
                       <div
