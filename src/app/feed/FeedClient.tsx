@@ -145,6 +145,31 @@ export default function FeedClient({ user }: { user: User }) {
 
   const [isTyping, setIsTyping] = useState(false);
 
+const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+
+// one callback that will point to the currently visible scroller
+const setScrollerRef = useCallback((el: HTMLDivElement | null) => {
+  if (el) setScrollEl(el);
+}, []);
+
+  useEffect(() => {
+  if (!scrollEl) return;
+
+  const onScroll = () => {
+    const nearBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 200;
+    setShowJumpToBottom(!nearBottom);
+  };
+
+  // set initial state
+  onScroll();
+
+  scrollEl.addEventListener('scroll', onScroll, { passive: true });
+  return () => scrollEl.removeEventListener('scroll', onScroll);
+}, [scrollEl]);
+
+
+
+
 useEffect(() => {
   if (!newMessage) return setIsTyping(false);
   setIsTyping(true);
@@ -152,18 +177,13 @@ useEffect(() => {
   return () => clearTimeout(t);
 }, [newMessage]);
 
-
 useEffect(() => {
-  const el = document.querySelector('#chat-scroll') as HTMLElement | null;
-  if (!el) return;
+  if (!scrollEl) return;
+  const nearBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 200;
+  if (nearBottom) jumpToBottom();
+}, [messages, scrollEl]);
 
-  const onScroll = () => {
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
-    setShowJumpToBottom(!nearBottom);
-  };
-  el.addEventListener('scroll', onScroll, { passive: true });
-  return () => el.removeEventListener('scroll', onScroll);
-}, []);
+
 
 const jumpToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 
@@ -616,50 +636,7 @@ const toggleLike = async (item: FeedItem) => {
   return Array.from(map.entries()); // [ [date, msgs[]], ... ]
 };
 
-// Reusable bubble
-const ChatBubble = ({ m, isOwn }: { m: Message; isOwn: boolean }) => {
-  const senderName = m.profiles?.username || m.profiles?.email || 'User';
-  const initial = senderName[0]?.toUpperCase();
 
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.15 }}
-      className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
-    >
-      <div className={`max-w-[80%] md:max-w-[75%]`}>
-        {!isOwn && (
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-white text-xs grid place-items-center">
-              {initial}
-            </div>
-            <span className="text-[11px] text-gray-500">{senderName}</span>
-          </div>
-        )}
-        <div
-          className={[
-            "px-4 py-2 rounded-2xl shadow-sm backdrop-blur",
-            isOwn
-              ? "bg-gradient-to-br from-purple-600 to-indigo-600 text-white rounded-tr-sm"
-              : "bg-white/80 text-gray-900 border border-black/5 rounded-tl-sm"
-          ].join(' ')}
-        >
-          <p className="text-sm leading-relaxed">{m.content}</p>
-          <span
-            className={[
-              "block mt-1 text-[10px]",
-              isOwn ? "text-white/70" : "text-gray-500"
-            ].join(' ')}
-          >
-            {formatTime(m.created_at)}
-          </span>
-        </div>
-      </div>
-    </motion.div>
-  );
-};
 
 
   return (
@@ -1058,110 +1035,137 @@ const ChatBubble = ({ m, isOwn }: { m: Message; isOwn: boolean }) => {
         </div>
       </main>
 
-      {/* Desktop Chat – modern glass panel */}
-        <aside className="hidden md:flex w-[24rem] border-l bg-white/70 backdrop-blur-xl supports-[backdrop-filter]:bg-white/50 flex-col h-full">
-          {/* Header */}
-          <div className="border-b p-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 grid place-items-center text-white shadow">
-                <MessageCircle className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="font-semibold leading-tight">School Chat</h3>
-                <p className="text-xs text-gray-500 -mt-0.5">Classwide messages</p>
-              </div>
-            </div>
-            <Badge variant="secondary">{messages.length}</Badge>
-          </div>
-
-<div id="chat-scroll" className="flex-1 overflow-y-auto p-4 space-y-6">
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-6">
-            {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-100 to-indigo-100 grid place-items-center mb-4">
-                  <MessageCircle className="w-7 h-7 text-purple-500" />
+      {/* Desktop Chat — modern glass panel */}
+          <aside className="relative hidden md:flex w-[24rem] border-l bg-white/70 backdrop-blur-xl supports-[backdrop-filter]:bg-white/50 flex-col h-full">
+            {/* Header */}
+            <div className="border-b p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 grid place-items-center text-white shadow">
+                  <MessageCircle className="w-4 h-4" />
                 </div>
-                <p className="text-gray-600 font-medium">No messages yet</p>
-                <p className="text-gray-400 text-sm">Be the first to say hi 👋</p>
+                <div>
+                  <h3 className="font-semibold leading-tight">School Chat</h3>
+                  <p className="text-xs text-gray-500 -mt-0.5">Classwide messages</p>
+                </div>
               </div>
-            ) : (
-              <AnimatePresence initial={false}>
-                {groupByDay(messages).map(([date, chunk]) => (
-                  <motion.div key={date} layout className="space-y-3">
-                    {/* Date chip */}
-                    <div className="sticky top-0 z-10 flex justify-center">
-                      <span className="text-[11px] px-3 py-1 rounded-full bg-white/70 border border-black/5 shadow-sm text-gray-600 backdrop-blur">
-                        {date}
-                      </span>
-                    </div>
-                    <div className="relative group">
-                    {/* Bubbles */}
-                    {chunk.map((m) => {
-                      const isOwn = m.user_id === user.id;
-                      return <ChatBubble key={m.id} m={m} isOwn={isOwn} />;
-                    })} 
-                    <div className="absolute -top-3 right-2 opacity-0 group-hover:opacity-100 transition
-                                    bg-white/90 backdrop-blur border border-black/5 rounded-full px-1">
-                      {['👍','🎉','❤️','🔥','👏'].map(e => (
-                        <button key={e} className="px-1.5 py-0.5 text-sm hover:scale-110 transition">{e}</button>
-                      ))}
-                    </div>
-                  </div>
-
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
-
-     {showJumpToBottom && (
-        <button
-          onClick={jumpToBottom}
-          className="absolute bottom-20 right-4 md:right-6 px-3 py-1.5 rounded-full
-                    bg-gray-900 text-white text-xs shadow-lg"
-          aria-label="Jump to newest"
-        >
-          New messages ↓
-        </button>
-      )}
-
-      {isTyping && (
-  <div className="flex items-center gap-2 text-gray-500 text-xs">
-    <div className="w-5 h-5 rounded-full bg-white/80 border border-black/5 grid place-items-center">
-      <span className="animate-pulse">…</span>
-    </div>
-    Someone is typing
-  </div>
-)}
-
-          {/* Composer */}
-          <div className="border-t p-3">
-            <div className="flex items-center gap-2 bg-white/80 backdrop-blur px-2 py-2 rounded-xl shadow-sm border border-black/5">
-              <Input
-                placeholder="Write a message…"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
-                className="border-0 bg-transparent focus-visible:ring-0"
-              />
-              <Button onClick={sendMessage} disabled={!newMessage.trim()} size="icon" className="rounded-xl">
-                <Send className="h-4 w-4" />
-              </Button>
+              <Badge variant="secondary">{messages.length}</Badge>
             </div>
-          </div>
-        </aside>
+
+            {/* Messages scroller */}
+            <div
+              ref={!mobileChatOpen ? setScrollerRef : undefined}
+              className="flex-1 overflow-y-auto p-4 space-y-6"
+            >
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-100 to-indigo-100 grid place-items-center mb-4">
+                    <MessageCircle className="w-7 h-7 text-purple-500" />
+                  </div>
+                  <p className="text-gray-600 font-medium">No messages yet</p>
+                  <p className="text-gray-400 text-sm">Be the first to say hi 👋</p>
+                </div>
+              ) : (
+                <AnimatePresence initial={false}>
+                  {groupByDay(messages).map(([date, chunk]) => (
+                    <motion.div key={date} layout className="space-y-3">
+                      {/* Date chip */}
+                      <div className="sticky top-0 z-10 flex justify-center">
+                        <span className="text-[11px] px-3 py-1 rounded-full bg-white/70 border border-black/5 shadow-sm text-gray-600 backdrop-blur">
+                          {date}
+                        </span>
+                      </div>
+
+                      {/* Message bubbles (simple version) */}
+                      {chunk.map((m) => {
+                        const isOwn = m.user_id === user.id;
+                        const senderName = m.profiles?.username || m.profiles?.email || 'User';
+                        const initial = senderName[0]?.toUpperCase();
+
+                        return (
+                          <div key={m.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
+                            <div className="max-w-[80%] md:max-w-[75%]">
+                              {!isOwn && (
+                                <div className="flex items-center gap-2 mb-1">
+                                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-white text-xs grid place-items-center">
+                                    {initial}
+                                  </div>
+                                  <span className="text-[11px] text-gray-500">{senderName}</span>
+                                </div>
+                              )}
+
+                              <div
+                                className={[
+                                  "px-4 py-2 rounded-2xl shadow-sm backdrop-blur",
+                                  isOwn
+                                    ? "bg-gradient-to-br from-purple-600 to-indigo-600 text-white rounded-tr-sm"
+                                    : "bg-white/80 text-gray-900 border border-black/5 rounded-tl-sm"
+                                ].join(' ')}
+                              >
+                                <p className="text-sm leading-relaxed">{m.content}</p>
+                                <span className={`block mt-1 text-[10px] ${isOwn ? 'text-white/70' : 'text-gray-500'}`}>
+                                  {formatTime(m.created_at)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              )}
+
+              {/* Stick target for "jump to bottom" */}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Jump-to-bottom (desktop) */}
+            {showJumpToBottom && (
+              <button
+                onClick={jumpToBottom}
+                className="absolute bottom-20 right-4 px-3 py-1.5 rounded-full bg-gray-900 text-white text-xs shadow-lg"
+                aria-label="Jump to newest"
+              >
+                New messages ↓
+              </button>
+            )}
+
+            {/* Typing indicator */}
+            {isTyping && (
+              <div className="px-4 pb-2 text-gray-500 text-xs flex items-center gap-2">
+                <div className="w-5 h-5 rounded-full bg-white/80 border border-black/5 grid place-items-center">
+                  <span className="animate-pulse">…</span>
+                </div>
+                Someone is typing
+              </div>
+            )}
+
+            {/* Composer */}
+            <div className="border-t p-3">
+              <div className="flex items-center gap-2 bg-white/80 backdrop-blur px-2 py-2 rounded-xl shadow-sm border border-black/5">
+                <Input
+                  placeholder="Write a message…"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  className="border-0 bg-transparent focus-visible:ring-0"
+                />
+                <Button onClick={sendMessage} disabled={!newMessage.trim()} size="icon" className="rounded-xl">
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </aside>
+
 
     </div>
 
-    {/* Mobile Chat – full-screen sheet style */}
+   {/* Mobile Chat — full-screen sheet */}
 {mobileChatOpen && (
   <div className="fixed inset-0 z-50 md:hidden flex flex-col bg-gradient-to-b from-white via-white/80 to-white/70 backdrop-blur-xl">
     {/* Header */}
@@ -1180,9 +1184,11 @@ const ChatBubble = ({ m, isOwn }: { m: Message; isOwn: boolean }) => {
       </Button>
     </div>
 
-<div id="chat-scroll" className="flex-1 overflow-y-auto p-4 space-y-6">
-    {/* Messages */}
-    <div className="flex-1 overflow-y-auto p-4 space-y-6">
+    {/* Messages scroller (ONE container, no nesting) */}
+    <div
+      ref={mobileChatOpen ? setScrollerRef : undefined}
+      className="relative flex-1 overflow-y-auto p-4 space-y-6"
+    >
       {messages.length === 0 ? (
         <div className="h-full flex flex-col items-center justify-center text-center">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-100 to-indigo-100 grid place-items-center mb-4">
@@ -1195,53 +1201,76 @@ const ChatBubble = ({ m, isOwn }: { m: Message; isOwn: boolean }) => {
         <AnimatePresence initial={false}>
           {groupByDay(messages).map(([date, chunk]) => (
             <motion.div key={date} layout className="space-y-3">
+              {/* Date chip */}
               <div className="sticky top-0 z-10 flex justify-center">
                 <span className="text-[11px] px-3 py-1 rounded-full bg-white/80 border border-black/5 shadow-sm text-gray-600 backdrop-blur">
                   {date}
                 </span>
               </div>
-               <div className="relative group">
-                    {/* Bubbles */}
-                    {chunk.map((m) => {
-                      const isOwn = m.user_id === user.id;
-                      return <ChatBubble key={m.id} m={m} isOwn={isOwn} />;
-                    })} 
-                    <div className="absolute -top-3 right-2 opacity-0 group-hover:opacity-100 transition
-                                    bg-white/90 backdrop-blur border border-black/5 rounded-full px-1">
-                      {['👍','🎉','❤️','🔥','👏'].map(e => (
-                        <button key={e} className="px-1.5 py-0.5 text-sm hover:scale-110 transition">{e}</button>
-                      ))}
+
+              {/* Simple bubbles */}
+              {chunk.map((m) => {
+                const isOwn = m.user_id === user.id;
+                const senderName = m.profiles?.username || m.profiles?.email || 'User';
+                const initial = senderName[0]?.toUpperCase();
+
+                return (
+                  <div key={m.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
+                    <div className="max-w-[85%]">
+                      {!isOwn && (
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-white text-xs grid place-items-center">
+                            {initial}
+                          </div>
+                          <span className="text-[11px] text-gray-500">{senderName}</span>
+                        </div>
+                      )}
+                      <div
+                        className={[
+                          "px-4 py-2 rounded-2xl shadow-sm backdrop-blur",
+                          isOwn
+                            ? "bg-gradient-to-br from-purple-600 to-indigo-600 text-white rounded-tr-sm"
+                            : "bg-white/80 text-gray-900 border border-black/5 rounded-tl-sm"
+                        ].join(' ')}
+                      >
+                        <p className="text-sm leading-relaxed">{m.content}</p>
+                        <span className={`block mt-1 text-[10px] ${isOwn ? 'text-white/70' : 'text-gray-500'}`}>
+                          {formatTime(m.created_at)}
+                        </span>
+                      </div>
                     </div>
                   </div>
+                );
+              })}
             </motion.div>
           ))}
         </AnimatePresence>
       )}
+
+      {/* Stick target for jump-to-bottom */}
       <div ref={messagesEndRef} />
     </div>
-  </div>
 
-  
-  {showJumpToBottom && (
-    <button
-      onClick={jumpToBottom}
-      className="absolute bottom-20 right-4 md:right-6 px-3 py-1.5 rounded-full
-                bg-gray-900 text-white text-xs shadow-lg"
-      aria-label="Jump to newest"
-    >
-      New messages ↓
-    </button>
-  )}
+    {/* Jump-to-bottom (mobile) */}
+    {showJumpToBottom && (
+      <button
+        onClick={jumpToBottom}
+        className="absolute bottom-24 right-4 px-3 py-1.5 rounded-full bg-gray-900 text-white text-xs shadow-lg"
+        aria-label="Jump to newest"
+      >
+        New messages ↓
+      </button>
+    )}
 
-  {isTyping && (
-    <div className="flex items-center gap-2 text-gray-500 text-xs">
-      <div className="w-5 h-5 rounded-full bg-white/80 border border-black/5 grid place-items-center">
-        <span className="animate-pulse">…</span>
+    {/* Typing indicator */}
+    {isTyping && (
+      <div className="px-4 pt-1 pb-2 text-gray-500 text-xs flex items-center gap-2">
+        <div className="w-5 h-5 rounded-full bg-white/80 border border-black/5 grid place-items-center">
+          <span className="animate-pulse">…</span>
+        </div>
+        Someone is typing
       </div>
-      Someone is typing
-    </div>
-  )}
-
+    )}
 
     {/* Composer */}
     <div className="border-t p-3 bg-white/80 backdrop-blur">
@@ -1270,6 +1299,7 @@ const ChatBubble = ({ m, isOwn }: { m: Message; isOwn: boolean }) => {
     </div>
   </div>
 )}
+
 
 
     {/* Delete Confirmation Dialog */}
