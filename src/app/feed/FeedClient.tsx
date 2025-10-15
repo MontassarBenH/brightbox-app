@@ -18,6 +18,8 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
+import { analytics } from '@/lib/analytics'
+
 
 import Link from 'next/link';
 import { Comments } from '@/components/Comments';
@@ -132,8 +134,13 @@ export default function FeedClient({ user }: { user: User }) {
   const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
 
 
+
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const feedContainerRef = useRef<HTMLDivElement>(null);
+  const videoViewFired = useRef<Set<string>>(new Set());
+  const postViewFired  = useRef<Set<string>>(new Set());
+  const watchTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   const [headerVisible, setHeaderVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
@@ -171,7 +178,20 @@ const setScrollerRef = useCallback((el: HTMLDivElement | null) => {
 }, [scrollEl]);
 
 
-
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      const { data } = await supabase.auth.getUser()
+      const uid = data.user?.id
+      if (!uid) return
+      await analytics.startSession(uid) 
+      analytics.setupActivityListeners()  
+    })()
+    return () => {
+      if (mounted) analytics.endSession().catch(() => {})
+      mounted = false
+    }
+  }, [supabase])
 
 useEffect(() => {
   if (!newMessage) return setIsTyping(false);
@@ -198,22 +218,41 @@ useEffect(() => {
 
   const io = new IntersectionObserver(
     (entries) => {
-      entries.forEach((entry) => {
+      entries.forEach(async (entry) => {
         const el = entry.target as HTMLElement;
-        const id = el.getAttribute('data-feed-id');
-        if (!id) return;
+        const key = el.getAttribute('data-feed-id'); 
+        if (!key) return;
 
-        const v = videoRefs.current.get(id);
-        if (!v) return;
+        const [kind, rawId] = key.split('-'); 
 
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-          // Play visible video
-          v.muted = true;
-          v.playsInline = true;
-          v.play().catch(() => {});
-        } else {
-          // Pause when out of view
-          v.pause();
+        if (kind === 'video') {
+          const v = videoRefs.current.get(key);
+          if (!v) return;
+
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+            v.muted = true;
+            v.playsInline = true;
+            v.play().catch(() => {});
+
+            // if (!videoViewFired.current.has(key)) {
+            //   videoViewFired.current.add(key);
+            //   await analytics.trackVideoView(user.id, rawId);
+            // }
+          } else {
+            v.pause();
+          }
+        } else if (kind === 'post') {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+            if (!postViewFired.current.has(key)) {
+              postViewFired.current.add(key);
+              const post = posts.find(p => p.id === rawId);
+              await analytics.trackEvent(
+                user.id,
+                'post_view',
+                { post_id: rawId, subject_id: post?.subject_id ?? null }
+              );
+            }
+          }
         }
       });
     },
@@ -223,7 +262,8 @@ useEffect(() => {
   const sections = container.querySelectorAll('[data-feed-id]');
   sections.forEach((s) => io.observe(s));
   return () => io.disconnect();
-}, [videos, posts]);
+}, [videos, posts, user.id]);
+
 
 
 
@@ -895,20 +935,63 @@ const toggleLike = async (item: FeedItem) => {
                         }}
                       >
                         {/* Video */}
-                      <video
-                        ref={(el) => {
-                          if (el) videoRefs.current.set(`${item.type}-${item.id}`, el);
-                          else videoRefs.current.delete(`${item.type}-${item.id}`);
-                        }}
-                        src={v.mux_playback_id}
-                        className="max-h-full max-w-full"
-                        muted
-                        playsInline
-                        loop
-                        preload="auto"
-                        onClick={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
-                        onTouchEnd={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
-                      />
+                     <video
+                            ref={(el) => {
+                              const key = `${item.type}-${item.id}`;
+                              if (el) {
+                                videoRefs.current.set(key, el);
+
+                                el.onplay = null;
+                                el.onpause = null;
+                                el.onended = null;
+
+                                el.onplay = async () => {
+                                  if (!videoViewFired.current.has(key)) {
+                                    videoViewFired.current.add(key);
+                                    await analytics.trackVideoView(user.id, v.id);
+                                  }
+
+                                  if (watchTimers.current.has(key)) return;
+                                  const t = setInterval(async () => {
+                                    if (el.paused) return;
+                                    const current = Math.floor(el.currentTime || 0);
+                                    const total   = Math.max(1, Math.floor(el.duration || 0));
+                                    await analytics.trackVideoWatchTime(user.id, v.id, current, current, total);
+                                  }, 5000);
+                                  watchTimers.current.set(key, t);
+                                };
+
+                                const stopTimerAndFlush = async () => {
+                                  const t = watchTimers.current.get(key);
+                                  if (t) {
+                                    clearInterval(t);
+                                    watchTimers.current.delete(key);
+                                  }
+                                  const current = Math.floor(el.currentTime || 0);
+                                  const total   = Math.max(1, Math.floor(el.duration || 0));
+                                  await analytics.trackVideoWatchTime(user.id, v.id, current, current, total);
+                                };
+
+                                el.onpause = stopTimerAndFlush;
+                                el.onended = stopTimerAndFlush;
+                              } else {
+                                // element unmounted: clear timer
+                                const t = watchTimers.current.get(`${item.type}-${item.id}`);
+                                if (t) clearInterval(t);
+                                watchTimers.current.delete(`${item.type}-${item.id}`);
+                                videoRefs.current.delete(`${item.type}-${item.id}`);
+                              }
+                            }}
+                            src={v.mux_playback_id}
+                            className="max-h-full max-w-full"
+                            muted
+                            playsInline
+                            loop
+                            preload="auto"
+                            onClick={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
+                            onTouchEnd={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
+                          />
+
 
                         {/* Center Play/Pause overlay icon */}
                         <div
