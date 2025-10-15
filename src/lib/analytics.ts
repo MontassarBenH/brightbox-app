@@ -1,55 +1,101 @@
-// src/lib/analytics.ts
+// lib/analytics.ts
 import { createClient } from '@/lib/supabase/client';
-
-type AnalyticsMetadata = Record<string, unknown>;
 
 export class AnalyticsService {
   private supabase = createClient();
   private sessionId: string | null = null;
-  private lastActiveTime = Date.now();
+  private lastActiveTime: number = Date.now();
   private inactivityTimeout: NodeJS.Timeout | null = null;
+  private activityInterval: NodeJS.Timeout | null = null;
 
   // Track user session
   async startSession(userId: string) {
-    const { data, error } = await this.supabase
-      .from('user_sessions')
-      .insert({ user_id: userId })
-      .select()
-      .single();
+    try {
+      // Check if there's an active session already
+      const { data: existingSessions } = await this.supabase
+        .from('user_sessions')
+        .select('id')
+        .eq('user_id', userId)
+        .is('ended_at', null)
+        .gte('last_active_at', new Date(Date.now() - 10 * 60 * 1000).toISOString());
 
-    if (error) {
-      console.error('[analytics] startSession error:', error);
-      return null;
-    }
+      // End any existing sessions first
+      if (existingSessions && existingSessions.length > 0) {
+        await this.supabase
+          .from('user_sessions')
+          .update({ ended_at: new Date().toISOString() })
+          .in('id', existingSessions.map(s => s.id));
+      }
 
-    if (data) {
-      this.sessionId = data.id as string;
-      this.trackActivity();
-      return data.id as string;
+      const { data, error } = await this.supabase
+        .from('user_sessions')
+        .insert({ 
+          user_id: userId,
+          started_at: new Date().toISOString(),
+          last_active_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error starting session:', error);
+        return null;
+      }
+
+      if (data) {
+        this.sessionId = data.id;
+        this.lastActiveTime = Date.now();
+        this.startActivityTracking();
+        console.log('Session started:', data.id);
+        return data.id;
+      }
+    } catch (err) {
+      console.error('Session start error:', err);
     }
     return null;
   }
 
-  // Update session activity
-  private trackActivity() {
-    if (this.inactivityTimeout) clearTimeout(this.inactivityTimeout);
-
-    this.lastActiveTime = Date.now();
-
-    if (this.sessionId) {
-      // Fire and forget; log on failure so we "use" the error.
-      this.supabase
-        .from('user_sessions')
-        .update({ last_active_at: new Date().toISOString() })
-        .eq('id', this.sessionId)
-        .then(({ error }) => {
-          if (error) console.error('[analytics] trackActivity error:', error);
-        });
+  // Start periodic activity updates
+  private startActivityTracking() {
+    // Clear any existing interval
+    if (this.activityInterval) {
+      clearInterval(this.activityInterval);
     }
 
-    // Inactivity timeout (5 minutes)
+    // Update activity every 30 seconds
+    this.activityInterval = setInterval(() => {
+      this.updateActivity();
+    }, 30000);
+
+    // Initial update
+    this.updateActivity();
+  }
+
+  // Update session activity
+  private async updateActivity() {
+    if (!this.sessionId) return;
+
+    try {
+      this.lastActiveTime = Date.now();
+      
+      await this.supabase
+        .from('user_sessions')
+        .update({ last_active_at: new Date().toISOString() })
+        .eq('id', this.sessionId);
+      
+      console.log('Activity updated');
+    } catch (err) {
+      console.error('Error updating activity:', err);
+    }
+
+    // Reset inactivity timeout
+    if (this.inactivityTimeout) {
+      clearTimeout(this.inactivityTimeout);
+    }
+
+    // Set inactivity timeout (5 minutes)
     this.inactivityTimeout = setTimeout(() => {
-      void this.endSession();
+      this.endSession();
     }, 5 * 60 * 1000);
   }
 
@@ -57,49 +103,70 @@ export class AnalyticsService {
   async endSession() {
     if (!this.sessionId) return;
 
-    const duration = Math.floor((Date.now() - this.lastActiveTime) / 1000);
+    try {
+      const startTime = this.lastActiveTime - (Date.now() - this.lastActiveTime);
+      const duration = Math.floor((Date.now() - startTime) / 1000);
+      
+      await this.supabase
+        .from('user_sessions')
+        .update({
+          ended_at: new Date().toISOString(),
+          duration_seconds: Math.max(0, duration),
+        })
+        .eq('id', this.sessionId);
 
-    const { error } = await this.supabase
-      .from('user_sessions')
-      .update({
-        ended_at: new Date().toISOString(),
-        duration_seconds: duration,
-      })
-      .eq('id', this.sessionId);
-
-    if (error) console.error('[analytics] endSession error:', error);
-
-    this.sessionId = null;
-  }
-
-  // Track video view
-  async trackVideoView(userId: string, videoId: string) {
-    await this.trackEvent(userId, 'video_view', { video_id: videoId });
-
-    const { data: existing, error } = await this.supabase
-      .from('video_analytics')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('video_id', videoId)
-      .maybeSingle();
-
-    if (error) {
-      console.error('[analytics] trackVideoView select error:', error);
-      return;
-    }
-
-    if (!existing) {
-      const { error: insertError } = await this.supabase
-        .from('video_analytics')
-        .insert({ user_id: userId, video_id: videoId });
-
-      if (insertError) {
-        console.error('[analytics] trackVideoView insert error:', insertError);
+      console.log('Session ended');
+      
+      // Clear intervals
+      if (this.activityInterval) {
+        clearInterval(this.activityInterval);
+        this.activityInterval = null;
       }
+      if (this.inactivityTimeout) {
+        clearTimeout(this.inactivityTimeout);
+        this.inactivityTimeout = null;
+      }
+      
+      this.sessionId = null;
+    } catch (err) {
+      console.error('Error ending session:', err);
     }
   }
 
-  // Track video watch time
+  // Track video view (called once per video)
+  async trackVideoView(userId: string, videoId: string) {
+    try {
+      await this.trackEvent(userId, 'video_view', { video_id: videoId });
+      
+      // Check if analytics record exists
+      const { data: existing } = await this.supabase
+        .from('video_analytics')
+        .select('id, watch_duration_seconds')
+        .eq('user_id', userId)
+        .eq('video_id', videoId)
+        .maybeSingle();
+
+      if (!existing) {
+        // Create new record
+        await this.supabase
+          .from('video_analytics')
+          .insert({ 
+            user_id: userId, 
+            video_id: videoId,
+            watch_duration_seconds: 0,
+            last_position_seconds: 0,
+            completed: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+        console.log('Video analytics record created for:', videoId);
+      }
+    } catch (err) {
+      console.error('Error tracking video view:', err);
+    }
+  }
+
+  // Track video watch time (called periodically)
   async trackVideoWatchTime(
     userId: string,
     videoId: string,
@@ -107,78 +174,101 @@ export class AnalyticsService {
     currentPosition: number,
     totalDuration: number
   ) {
-    const completed = currentPosition >= totalDuration * 0.95;
+    try {
+      const completed = currentPosition >= totalDuration * 0.9; // 90% completion
 
-    const { error: upsertError } = await this.supabase
-      .from('video_analytics')
-      .upsert(
-        {
-          user_id: userId,
-          video_id: videoId,
-          watch_duration_seconds: watchedSeconds,
-          last_position_seconds: currentPosition,
+      console.log('Tracking watch time:', {
+        videoId,
+        watchedSeconds,
+        currentPosition,
+        totalDuration,
+        completed
+      });
+
+      const { error } = await this.supabase
+        .from('video_analytics')
+        .update({
+          watch_duration_seconds: Math.floor(watchedSeconds),
+          last_position_seconds: Math.floor(currentPosition),
           completed,
           updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id,video_id' }
-      );
+        })
+        .eq('user_id', userId)
+        .eq('video_id', videoId);
 
-    if (upsertError) {
-      console.error('[analytics] trackVideoWatchTime upsert error:', upsertError);
+      if (error) {
+        console.error('Error updating video analytics:', error);
+      }
+
+      // Also track as event
+      await this.trackEvent(userId, 'video_watch_time', {
+        video_id: videoId,
+        watched_seconds: Math.floor(watchedSeconds),
+        current_position: Math.floor(currentPosition),
+        total_duration: Math.floor(totalDuration),
+        completed,
+      });
+    } catch (err) {
+      console.error('Error tracking watch time:', err);
     }
-
-    await this.trackEvent(userId, 'video_watch_time', {
-      video_id: videoId,
-      watched_seconds: watchedSeconds,
-      completed,
-    });
   }
 
   // Track post view
   async trackPostView(userId: string, postId: string) {
-    await this.trackEvent(userId, 'post_view', { post_id: postId });
+    try {
+      await this.trackEvent(userId, 'post_view', { post_id: postId });
+    } catch (err) {
+      console.error('Error tracking post view:', err);
+    }
   }
 
   // Generic event tracking
-  async trackEvent(userId: string, eventType: string, metadata: AnalyticsMetadata = {}) {
-    this.trackActivity();
-
-    const { error } = await this.supabase
-      .from('analytics_events')
-      .insert({
-        user_id: userId,
-        event_type: eventType,
-        metadata, // JSONB column recommended
-      });
-
-    if (error) console.error('[analytics] trackEvent error:', error);
+  async trackEvent(
+    userId: string,
+    eventType: string,
+    metadata: Record<string, unknown> = {}
+  ) {
+    try {
+      await this.supabase
+        .from('analytics_events')
+        .insert({
+          user_id: userId,
+          event_type: eventType,
+          metadata,
+          created_at: new Date().toISOString()
+        });
+    } catch (err) {
+      console.error('Error tracking event:', err);
+    }
   }
 
   // Setup listeners for activity
   setupActivityListeners() {
     if (typeof window === 'undefined') return;
 
-    const events: Array<keyof WindowEventMap> = ['mousedown', 'keydown', 'scroll', 'touchstart'];
-    const handler = () => this.trackActivity();
-
-    events.forEach((evt) => {
-      window.addEventListener(evt, handler, { passive: true });
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    const handler = () => this.updateActivity();
+    
+    events.forEach(event => {
+      window.addEventListener(event, handler, { passive: true });
     });
 
     // Track page visibility
-    document.addEventListener('visibilitychange', () => {
+    document.addEventListener('visibilitychange', async () => {
       if (document.hidden) {
-        void this.endSession();
+        await this.endSession();
       } else {
         // Restart session when page becomes visible
-        this.supabase.auth.getUser().then(({ data, error }) => {
-          if (error) {
-            console.error('[analytics] getUser error:', error);
-            return;
-          }
-          if (data.user) void this.startSession(data.user.id);
-        });
+        const { data } = await this.supabase.auth.getUser();
+        if (data.user) {
+          await this.startSession(data.user.id);
+        }
       }
+    });
+
+    // End session on page unload
+    window.addEventListener('beforeunload', () => {
+      this.endSession();
     });
   }
 }

@@ -135,12 +135,12 @@ export default function FeedClient({ user }: { user: User }) {
 
 
 
-
+  const videoStartTimes = useRef<Map<string, number>>(new Map());
+  const videoTotalWatched = useRef<Map<string, number>>(new Map());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const feedContainerRef = useRef<HTMLDivElement>(null);
   const videoViewFired = useRef<Set<string>>(new Set());
   const postViewFired  = useRef<Set<string>>(new Set());
-  const watchTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   const [headerVisible, setHeaderVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
@@ -934,64 +934,114 @@ const toggleLike = async (item: FeedItem) => {
                           }
                         }}
                       >
-                        {/* Video */}
+                    {/* Video */}
                      <video
-                            ref={(el) => {
-                              const key = `${item.type}-${item.id}`;
-                              if (el) {
-                                videoRefs.current.set(key, el);
+                          ref={(el) => {
+                            const key = `${item.type}-${item.id}`;
+                            if (el) {
+                              videoRefs.current.set(key, el);
 
-                                el.onplay = null;
-                                el.onpause = null;
-                                el.onended = null;
+                              // Remove old listeners
+                              el.onplay = null;
+                              el.onpause = null;
+                              el.onended = null;
+                              el.ontimeupdate = null;
 
-                                el.onplay = async () => {
-                                  if (!videoViewFired.current.has(key)) {
-                                    videoViewFired.current.add(key);
-                                    await analytics.trackVideoView(user.id, v.id);
+                              // Track when video starts playing
+                              el.onplay = async () => {
+                                console.log('Video started playing:', v.id);
+                                
+                                // Fire view event only once
+                                if (!videoViewFired.current.has(key)) {
+                                  videoViewFired.current.add(key);
+                                  await analytics.trackVideoView(user.id, v.id);
+                                }
+
+                                // Record start time for this play session
+                                videoStartTimes.current.set(key, Date.now());
+                              };
+
+                              // Track watch time periodically
+                              el.ontimeupdate = async () => {
+                                if (el.paused) return;
+
+                                const current = Math.floor(el.currentTime || 0);
+                                const total = Math.floor(el.duration || 1);
+                                
+                                // Calculate total watched time
+                                const startTime = videoStartTimes.current.get(key);
+                                if (startTime) {
+                                  const elapsed = (Date.now() - startTime) / 1000;
+                                  const currentTotal = (videoTotalWatched.current.get(key) || 0) + elapsed;
+                                  videoTotalWatched.current.set(key, currentTotal);
+                                  videoStartTimes.current.set(key, Date.now()); // Reset for next interval
+                                  
+                                  // Send update every 3 seconds of actual watch time
+                                  if (currentTotal > 0 && Math.floor(currentTotal) % 3 === 0) {
+                                    await analytics.trackVideoWatchTime(
+                                      user.id,
+                                      v.id,
+                                      Math.floor(currentTotal),
+                                      current,
+                                      total
+                                    );
                                   }
+                                }
+                              };
 
-                                  if (watchTimers.current.has(key)) return;
-                                  const t = setInterval(async () => {
-                                    if (el.paused) return;
-                                    const current = Math.floor(el.currentTime || 0);
-                                    const total   = Math.max(1, Math.floor(el.duration || 0));
-                                    await analytics.trackVideoWatchTime(user.id, v.id, current, current, total);
-                                  }, 5000);
-                                  watchTimers.current.set(key, t);
-                                };
-
-                                const stopTimerAndFlush = async () => {
-                                  const t = watchTimers.current.get(key);
-                                  if (t) {
-                                    clearInterval(t);
-                                    watchTimers.current.delete(key);
-                                  }
+                              // Handle pause and end
+                              const stopTracking = async () => {
+                                console.log('Video stopped:', v.id);
+                                
+                                // Calculate and save final watch time
+                                const startTime = videoStartTimes.current.get(key);
+                                if (startTime) {
+                                  const elapsed = (Date.now() - startTime) / 1000;
+                                  const finalTotal = (videoTotalWatched.current.get(key) || 0) + elapsed;
+                                  
                                   const current = Math.floor(el.currentTime || 0);
-                                  const total   = Math.max(1, Math.floor(el.duration || 0));
-                                  await analytics.trackVideoWatchTime(user.id, v.id, current, current, total);
-                                };
+                                  const total = Math.floor(el.duration || 1);
+                                  
+                                  await analytics.trackVideoWatchTime(
+                                    user.id,
+                                    v.id,
+                                    Math.floor(finalTotal),
+                                    current,
+                                    total
+                                  );
+                                  
+                                  console.log('Final watch time:', {
+                                    videoId: v.id,
+                                    watched: Math.floor(finalTotal),
+                                    current,
+                                    total
+                                  });
+                                }
+                                
+                                // Clear tracking for this session
+                                videoStartTimes.current.delete(key);
+                              };
 
-                                el.onpause = stopTimerAndFlush;
-                                el.onended = stopTimerAndFlush;
-                              } else {
-                                // element unmounted: clear timer
-                                const t = watchTimers.current.get(`${item.type}-${item.id}`);
-                                if (t) clearInterval(t);
-                                watchTimers.current.delete(`${item.type}-${item.id}`);
-                                videoRefs.current.delete(`${item.type}-${item.id}`);
-                              }
-                            }}
-                            src={v.mux_playback_id}
-                            className="max-h-full max-w-full"
-                            muted
-                            playsInline
-                            loop
-                            preload="auto"
-                            onClick={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
-                            onTouchEnd={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
-                          />
-
+                              el.onpause = stopTracking;
+                              el.onended = stopTracking;
+                              
+                            } else {
+                              // Cleanup when element unmounts
+                              const key = `${item.type}-${item.id}`;
+                              videoRefs.current.delete(key);
+                              videoStartTimes.current.delete(key);
+                              videoTotalWatched.current.delete(key);
+                            }
+                          }}
+                          src={v.mux_playback_id}
+                          className="max-h-full max-w-full"
+                          muted
+                          playsInline
+                          loop
+                          preload="auto"
+                          onClick={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
+                          onTouchEnd={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
+                        />
 
                         {/* Center Play/Pause overlay icon */}
                         <div
