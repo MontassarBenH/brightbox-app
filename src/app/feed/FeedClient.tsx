@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   MessageCircle, 
+  Bookmark,
+  BookmarkCheck,
   Send, 
   Video as VideoIcon, 
   Trash2, 
@@ -114,6 +116,8 @@ export default function FeedClient({ user }: { user: User }) {
   const [deleting, setDeleting] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [likedItems, setLikedItems] = useState<Set<string>>(new Set());
+  const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
+
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const feedContainerRef = useRef<HTMLDivElement>(null);
@@ -127,10 +131,6 @@ export default function FeedClient({ user }: { user: User }) {
   const [overlayIcon, setOverlayIcon] = useState<'play' | 'pause'>('play');
   const overlayTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const activeIdRef = useRef<string | null>(null);
-
-
-  // IntersectionObserver: auto play/pause current video
   // IntersectionObserver: auto play/pause current video
 useEffect(() => {
   const container = feedContainerRef.current;
@@ -195,7 +195,6 @@ useEffect(() => {
     overlayTimerRef.current = setTimeout(() => setOverlayVisibleId(null), 800);
   };
 
-  const justToggledRef = useRef<{ id: string; until: number } | null>(null);
 
 
   const toggleVideoPlay = (id: string) => {
@@ -215,6 +214,59 @@ useEffect(() => {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const toggleSave = async (item: FeedItem) => {
+  // block saving your own content
+  if (item.user_id === user.id) return;
+
+  const key = `${item.type}-${item.id}`;
+  const isSaved = savedItems.has(key);
+  const column = item.type === 'video' ? 'video_id' : 'post_id';
+
+  try {
+    if (isSaved) {
+      await supabase
+        .from('saves')
+        .delete()
+        .eq('user_id', user.id)
+        .eq(column, item.id);
+
+      setSavedItems(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    } else {
+      await supabase
+        .from('saves')
+        .insert({ user_id: user.id, [column]: item.id });
+
+      setSavedItems(prev => new Set(prev).add(key));
+    }
+  } catch (e) {
+    console.error('toggleSave error', e);
+  }
+};
+
+
+
+const loadSaved = useCallback(async () => {
+  const { data, error } = await supabase
+    .from('saves')
+    .select('video_id, post_id')
+    .eq('user_id', user.id);
+
+  if (error) return;
+
+  const s = new Set<string>();
+  (data ?? []).forEach(r => {
+    if (r.video_id) s.add(`video-${r.video_id}`);
+    if (r.post_id)  s.add(`post-${r.post_id}`);
+  });
+  setSavedItems(s);
+}, [supabase, user.id]);
+
+
 
   // Load subjects
   const loadSubjects = useCallback(async () => {
@@ -455,6 +507,7 @@ const toggleLike = async (item: FeedItem) => {
     loadVideos();
     loadPosts();
     loadLikes();
+    loadSaved();
 
     const messagesChannel = supabase
       .channel('messages-feed')
@@ -485,7 +538,7 @@ const toggleLike = async (item: FeedItem) => {
       supabase.removeChannel(postsChannel);
       supabase.removeChannel(commentsChannel); 
     };
-  }, [supabase, loadSubjects, loadMessages, loadVideos, loadPosts, loadLikes]);
+  }, [supabase, loadSubjects, loadMessages, loadVideos, loadPosts, loadLikes, loadSaved]);
 
   useEffect(() => {
     scrollToBottom();
@@ -733,6 +786,29 @@ const toggleLike = async (item: FeedItem) => {
                       </span>
                     </button>
                   </div>
+
+                  {/* Save / Unsave (videos & posts) */}
+                    <div className="pointer-events-auto">
+                      <button
+                        onClick={() => toggleSave(item)}
+                        disabled={item.user_id === user.id}  // ⛔ can't save your own
+                        className="flex flex-col items-center disabled:opacity-50"
+                      >
+                        <div className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-white/30 transition">
+                          {savedItems.has(`${item.type}-${item.id}`) ? (
+                            <BookmarkCheck className="w-7 h-7 text-white" />
+                          ) : (
+                            <Bookmark className="w-7 h-7 text-white" />
+                          )}
+                        </div>
+                        <span className="text-white text-xs mt-1 font-semibold">
+                          {item.user_id === user.id
+                            ? 'Yours'
+                            : savedItems.has(`${item.type}-${item.id}`) ? 'Saved' : 'Save'}
+                        </span>
+                      </button>
+                    </div>
+
 
                   {/* Comments */}
                   <div className="pointer-events-auto">
