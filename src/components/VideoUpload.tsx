@@ -1,4 +1,3 @@
-// src/components/VideoUpload.tsx
 'use client';
 
 import { useState } from 'react';
@@ -48,7 +47,7 @@ export function VideoUpload({ userId, subjects, onUploadSuccess }: VideoUploadPr
       alert('Please select a video file');
       return;
     }
-    // ~100 MB max (adjust if needed)
+    // ~100 MB max 
     if (f.size > 100 * 1024 * 1024) {
       alert('File size must be less than 100MB');
       return;

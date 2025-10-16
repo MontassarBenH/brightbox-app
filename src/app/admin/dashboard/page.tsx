@@ -25,15 +25,15 @@ type OnlineUser = {
   id: string;
   name: string;
   email: string;
-  duration: number; // seconds
+  duration: number; 
 };
 
 type TopVideo = {
   id: string;
   title: string;
   views: number;
-  avgWatchTime: number; // seconds
-  completion: number;   // 0-100
+  avgWatchTime: number;
+  completion: number;  
 };
 
 type ReportRow = {
@@ -113,7 +113,6 @@ const formatDuration = (seconds: number) => {
 
   // ---------- fetchers ----------
   const loadStats = async () => {
-    // totalUsers from profiles (fallback if you keep user profiles mirrored)
     const [{ count: usersCount }, { count: videosCount }, { count: postsCount }, { count: commentsCount }, { count: likesCount }, { count: reportsCount }, { count: pendingCount }] =
       await Promise.all([
         supabase.from('profiles').select('*', { count: 'exact', head: true }),
@@ -125,7 +124,6 @@ const formatDuration = (seconds: number) => {
         supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
       ]);
 
-    // active users: last_active_at within selected window in user_sessions
     const { data: activeSessions } = await supabase
       .from('user_sessions')
       .select('user_id')
@@ -146,7 +144,6 @@ const formatDuration = (seconds: number) => {
   };
 
   const loadOnlineUsers = async () => {
-    // active in last 5 minutes
     const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
     const { data: sessions } = await supabase
@@ -188,7 +185,6 @@ const formatDuration = (seconds: number) => {
   };
 
  const loadTopVideos = async () => {
-  // Use updated_at because rows get edited in place
   const { data: va, error } = await supabase
   .from('video_analytics')
   .select('video_id, user_id, watch_duration_seconds, completed, updated_at')
@@ -200,7 +196,6 @@ if (error) {
   return;
 }
 
-// use a mutable local buffer instead of reassigning 'va'
 let rows = va ?? [];
 if (rows.length === 0) {
   const fallback = await supabase

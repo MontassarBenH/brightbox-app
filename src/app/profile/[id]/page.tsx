@@ -42,8 +42,7 @@ export default async function ProfilePage({
       .order('created_at', { ascending: false }),
   ])
 
-  // --- Saved items (private; only when viewing your own profile) ---
-// at the top, after other types
+
 type SavedVideo = {
   id: string;
   title: string;

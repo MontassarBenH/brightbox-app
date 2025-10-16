@@ -209,7 +209,7 @@ export function Comments({
                           {username}
                         </Link>
 
-                        {/* Actions (Report for others, Delete for own) */}
+                        {/* Actions */}
                         <div className="flex items-center gap-2">
                           {!isOwn && (
                             <ReportDialog

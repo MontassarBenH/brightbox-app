@@ -563,8 +563,7 @@ const loadSaved = useCallback(async () => {
     ...posts.map(p => ({ ...p, type: 'post' as const })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-  // Toggle like
-  // Toggle like — only touch the likes table, then reload counts
+
 const toggleLike = async (item: FeedItem) => {
   const key = `${item.type}-${item.id}`;
   const isLiked = likedItems.has(key);
@@ -811,7 +810,7 @@ const toggleLike = async (item: FeedItem) => {
                     </div>
 
                     <div className="mt-6 flex gap-2">
-                      <Button className="flex-1 h-9 rounded-full" onClick={() => {/* optional close if you add setOpen */}}>
+                      <Button className="flex-1 h-9 rounded-full" onClick={() => {/*  */}}>
                         Done
                       </Button>
                       <Button
@@ -863,7 +862,7 @@ const toggleLike = async (item: FeedItem) => {
               </div>
             </div>
 
-            {/* Subject strip with fades (glassy + even padding) */}
+            {/* Subject strip with fades  */}
     <div className="relative bg-white/60 supports-[backdrop-filter]:backdrop-blur-xl border-b border-black/5">
       {/* edge fades */}
       <div className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-white/60 to-transparent" />
@@ -977,7 +976,6 @@ const toggleLike = async (item: FeedItem) => {
 
                           let updateTimer: NodeJS.Timeout | null = null;
 
-                          // When metadata loads, we know the duration
                           el.onloadedmetadata = () => {
                             console.log('📹 Video loaded:', v.id, 'duration:', Math.floor(el.duration));
                           };
@@ -1135,7 +1133,7 @@ const toggleLike = async (item: FeedItem) => {
                     <div className="pointer-events-auto">
                       <button
                         onClick={() => toggleSave(item)}
-                        disabled={item.user_id === user.id}  // ⛔ can't save your own
+                        disabled={item.user_id === user.id}  
                         className="flex flex-col items-center disabled:opacity-50"
                       >
                         <div className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-white/30 transition">
@@ -1205,7 +1203,7 @@ const toggleLike = async (item: FeedItem) => {
                   )}
                 </div>
 
-                {/* Info Overlay (bottom) - Better mobile touch targets */}
+                {/* Info Overlay (bottom) */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4 md:p-6 pl-20 md:pl-24">
                   <div className="max-w-4xl">
                     {item.type === 'video' && (
@@ -1297,7 +1295,7 @@ const toggleLike = async (item: FeedItem) => {
                         </span>
                       </div>
 
-                      {/* Message bubbles (simple version) */}
+                      {/* Message bubbles  */}
                       {chunk.map((m) => {
                         const isOwn = m.user_id === user.id;
                         const senderName = m.profiles?.username || m.profiles?.email || 'User';
@@ -1418,7 +1416,7 @@ const toggleLike = async (item: FeedItem) => {
       </Button>
     </div>
 
-    {/* Messages scroller (ONE container, no nesting) */}
+    {/* Messages scroller */}
     <div
       ref={mobileChatOpen ? setScrollerRef : undefined}
       className="relative flex-1 overflow-y-auto p-4 space-y-6"
