@@ -166,7 +166,6 @@ export class AnalyticsService {
     }
   }
 
-  // Track video watch time (called periodically)
   async trackVideoWatchTime(
     userId: string,
     videoId: string,
@@ -175,7 +174,7 @@ export class AnalyticsService {
     totalDuration: number
   ) {
     try {
-      const completed = currentPosition >= totalDuration * 0.9; // 90% completion
+      const completed = currentPosition >= totalDuration * 0.9;
 
       console.log('Tracking watch time:', {
         videoId,

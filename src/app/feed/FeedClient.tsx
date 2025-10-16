@@ -143,6 +143,8 @@ export default function FeedClient({ user }: { user: User }) {
   const postViewFired  = useRef<Set<string>>(new Set());
   const analyticsReadyRef = useRef(false);
   const videoDurationReady = useRef<Set<string>>(new Set());
+  const completionSent = useRef<Set<string>>(new Set());
+
 
 
   const [headerVisible, setHeaderVisible] = useState(true);
@@ -994,37 +996,53 @@ const toggleLike = async (item: FeedItem) => {
                             };
 
                           el.ontimeupdate = async () => {
-                          if (el.paused || !videoDurationReady.current.has(key)) return;
+                            if (el.paused || !videoDurationReady.current.has(key)) return;
 
-                          const now = Date.now();
-                          const current = Math.floor(el.currentTime);
-                          const total = Math.floor(el.duration);
-                          if (!Number.isFinite(total) || total <= 0) return;   
+                            const now = Date.now();
+                            const current = Math.floor(el.currentTime);
+                            const total = Math.floor(el.duration);
+                            if (!Number.isFinite(total) || total <= 0) return;
 
-                          const startTime = videoStartTimes.current.get(key);
-                          if (!startTime) return;
+                            const startTime = videoStartTimes.current.get(key);
+                            if (!startTime) return;
 
-                          const sessionElapsed = (now - startTime) / 1000;
-                          const currentTotal = (videoTotalWatched.current.get(key) || 0) + sessionElapsed;
+                            const sessionElapsed = (now - startTime) / 1000;
+                            const currentTotal = (videoTotalWatched.current.get(key) || 0) + sessionElapsed;
 
-                          videoTotalWatched.current.set(key, currentTotal);
-                          videoStartTimes.current.set(key, now);
+                            // persist local accumulators
+                            videoTotalWatched.current.set(key, currentTotal);
+                            videoStartTimes.current.set(key, now);
 
-                          if (analyticsReady && now - lastUpdateTime >= UPDATE_INTERVAL) {
-                            lastUpdateTime = now;
-                            try {
-                              await analytics.trackVideoWatchTime(
-                                user.id,
-                                v.id,
-                                Math.floor(currentTotal),
-                                current,
-                                total
-                              );
-                            } catch {}
-                          }
-                        };
+                            // ✅ immediately send once when we first cross 90%
+                            const crossed90 = total > 0 && current / total >= 0.9;
+                            if (analyticsReady && crossed90 && !completionSent.current.has(key)) {
+                              completionSent.current.add(key);
+                              try {
+                                await analytics.trackVideoWatchTime(
+                                  user.id,
+                                  v.id,
+                                  Math.floor(currentTotal),
+                                  current,
+                                  total
+                                );
+                              } catch {}
+                            }
+
+                            // keep the regular throttled heartbeat
+                            if (analyticsReady && now - lastUpdateTime >= UPDATE_INTERVAL) {
+                              lastUpdateTime = now;
+                              try {
+                                await analytics.trackVideoWatchTime(
+                                  user.id,
+                                  v.id,
+                                  Math.floor(currentTotal),
+                                  current,
+                                  total
+                                );
+                              } catch {}
+                            }
+                          };
                           const finalizeSegment = async () => {
-                            // If metadata never loaded or duration invalid, skip completion math
                             if (!videoDurationReady.current.has(key)) {
                               videoStartTimes.current.delete(key);
                               return;
@@ -1043,6 +1061,7 @@ const toggleLike = async (item: FeedItem) => {
                               const finalTotal = (videoTotalWatched.current.get(key) || 0) + elapsed;
 
                               if (analyticsReady) {
+                                // send a last snapshot
                                 try {
                                   await analytics.trackVideoWatchTime(
                                     user.id,
@@ -1055,9 +1074,14 @@ const toggleLike = async (item: FeedItem) => {
                               }
                             }
 
-                            // Clear active slice (keep cumulative to resume)
+                            // if we ended/paused beyond 90%, remember it
+                            if (total > 0 && current / total >= 0.9) {
+                              completionSent.current.add(key);
+                            }
+
                             videoStartTimes.current.delete(key);
                           };
+
 
                           el.onpause = finalizeSegment;
                           el.onended = finalizeSegment;
@@ -1066,6 +1090,7 @@ const toggleLike = async (item: FeedItem) => {
                           videoStartTimes.current.delete(key);
                           videoTotalWatched.current.delete(key);
                           videoDurationReady.current.delete(key);
+                          completionSent.current.delete(key);
                         }
                       }}
                       src={v.mux_playback_id}
@@ -1073,7 +1098,7 @@ const toggleLike = async (item: FeedItem) => {
                       muted
                       playsInline
                       loop
-                      preload="auto"
+                      //preload="auto"
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleVideoPlay(`${item.type}-${item.id}`);
