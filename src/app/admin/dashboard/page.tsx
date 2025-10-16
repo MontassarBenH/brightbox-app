@@ -85,12 +85,15 @@ const AdminDashboard = () => {
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
 
   // ---------- helpers ----------
-  const formatDuration = (seconds: number) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    if (h > 0) return `${h}h ${m}m`;
-    return `${m}m`;
-  };
+const formatDuration = (seconds: number) => {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+};
+
 
   // Admin check via admin_users
   const checkAdmin = async () => {
@@ -184,58 +187,82 @@ const AdminDashboard = () => {
     setOnlineUsers(Array.from(uniq.values()));
   };
 
-  const loadTopVideos = async () => {
-    // Pull recent analytics rows within range and aggregate in client
-    const { data: va } = await supabase
-      .from('video_analytics')
-      .select('video_id, watch_duration_seconds, completed, created_at')
-      .gte('created_at', sinceISO);
+ const loadTopVideos = async () => {
+  // Use updated_at because rows get edited in place
+  const { data: va, error } = await supabase
+  .from('video_analytics')
+  .select('video_id, user_id, watch_duration_seconds, completed, updated_at')
+  .gte('updated_at', sinceISO);
 
-    if (!va || va.length === 0) {
-      setTopVideos([]);
-      return;
-    }
+if (error) {
+  console.error('video_analytics query error:', error);
+  setTopVideos([]);
+  return;
+}
 
-    // Aggregate by video_id
-    const agg = new Map<
-      string,
-      { views: number; totalWatch: number; completedSum: number }
-    >();
+// use a mutable local buffer instead of reassigning 'va'
+let rows = va ?? [];
+if (rows.length === 0) {
+  const fallback = await supabase
+    .from('video_analytics')
+    .select('video_id, user_id, watch_duration_seconds, completed, updated_at')
+    .order('updated_at', { ascending: false })
+    .limit(500);
+  rows = fallback.data ?? [];
+}
 
-    va.forEach((r) => {
-      const cur = agg.get(r.video_id) ?? { views: 0, totalWatch: 0, completedSum: 0 };
-      cur.views += 1;
-      cur.totalWatch += (r.watch_duration_seconds ?? 0);
-      cur.completedSum += (r.completed ? 1 : 0);
-      agg.set(r.video_id, cur);
-    });
+if (rows.length === 0) {
+  setTopVideos([]);
+  return;
+}
 
-    // Enrich with titles
-    const videoIds = Array.from(agg.keys());
-    const { data: vids } = await supabase
-      .from('videos')
-      .select('id, title')
-      .in('id', videoIds);
+  // Aggregate per video
+  const agg = new Map<
+    string,
+    { viewers: Set<string>; totalWatch: number; completedCount: number }
+  >();
 
-    const titleMap = new Map((vids ?? []).map((v) => [v.id, v.title || 'Untitled']));
+  for (const r of rows) {
+  const vid = r.video_id as string;
+  const entry = agg.get(vid) ?? { viewers: new Set<string>(), totalWatch: 0, completedCount: 0 };
+  if (r.user_id) entry.viewers.add(r.user_id as string);
+  entry.totalWatch += Math.max(0, Number(r.watch_duration_seconds ?? 0));
+  if (r.completed === true) entry.completedCount += 1;
+  agg.set(vid, entry);
+}
+  const videoIds = Array.from(agg.keys());
+  if (videoIds.length === 0) {
+    setTopVideos([]);
+    return;
+  }
 
-    const list: TopVideo[] = videoIds.map((id) => {
-      const a = agg.get(id)!;
-      const avgWatch = Math.round(a.totalWatch / Math.max(1, a.views));
-      const completion = Math.round((a.completedSum / Math.max(1, a.views)) * 100);
-      return {
-        id,
-        title: titleMap.get(id) ?? 'Untitled',
-        views: a.views,
-        avgWatchTime: avgWatch,
-        completion,
-      };
-    });
+  // Titles
+  const { data: vids } = await supabase
+    .from('videos')
+    .select('id, title')
+    .in('id', videoIds);
 
-    // sort by views desc, take top 10
-    list.sort((x, y) => y.views - x.views);
-    setTopVideos(list.slice(0, 10));
-  };
+  const titleMap = new Map((vids ?? []).map(v => [v.id, v.title || 'Untitled']));
+
+  const list: TopVideo[] = videoIds.map(id => {
+    const a = agg.get(id)!;
+    const views = a.viewers.size || 0;
+    const avgWatchTime = views > 0 ? Math.round(a.totalWatch / views) : 0;
+    const completion = views > 0 ? Math.round((a.completedCount / views) * 100) : 0;
+
+    return {
+      id,
+      title: titleMap.get(id) ?? 'Untitled',
+      views,
+      avgWatchTime,
+      completion,
+    };
+  });
+
+  list.sort((x, y) => y.views - x.views);
+  setTopVideos(list.slice(0, 10));
+};
+
 
   const loadRecentReports = async () => {
     const { data } = await supabase

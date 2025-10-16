@@ -164,16 +164,6 @@ const setScrollerRef = useCallback((el: HTMLDivElement | null) => {
   if (el) setScrollEl(el);
 }, []);
 
-useEffect(() => {
-  let alive = true;
-  (async () => {
-    const { data: { user: u } } = await supabase.auth.getUser();
-    if (!u || !alive) return;
-    const sessionId = await analytics.startSession(u.id);
-    if (sessionId) analytics.setupActivityListeners();
-  })();
-  return () => { alive = false; analytics.endSession().catch(() => {}); };
-}, []);
 
 
   useEffect(() => {
@@ -192,7 +182,8 @@ useEffect(() => {
 }, [scrollEl]);
 
 
- useEffect(() => {
+// eslint-disable-next-line react-hooks/exhaustive-deps
+useEffect(() => {
   let alive = true;
 
   (async () => {
@@ -209,7 +200,6 @@ useEffect(() => {
         analytics.setupActivityListeners();
         analyticsReadyRef.current = true;
       }
-    } else {
     }
   })();
 
@@ -218,6 +208,7 @@ useEffect(() => {
     analytics.endSession().catch(() => {});
   };
 }, []);
+
 
 
 useEffect(() => {
