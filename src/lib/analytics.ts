@@ -166,56 +166,62 @@ export class AnalyticsService {
     }
   }
 
-  async trackVideoWatchTime(
-  userId: string,
-  videoId: string,
-  watchedSeconds: number,  
-  currentPosition: number,
-  totalDuration: number
-) {
-  try {
-    const completed = currentPosition >= totalDuration * 0.9;
+    async trackVideoWatchTime(
+    userId: string,
+    videoId: string,
+    watchedSeconds: number, 
+    currentPosition: number,
+    totalDuration: number
+  ) {
+    try {
+      // Get existing record
+      const { data: existing } = await this.supabase
+        .from('video_analytics')
+        .select('watch_duration_seconds, last_position_seconds, completed')
+        .eq('user_id', userId)
+        .eq('video_id', videoId)
+        .maybeSingle();
 
-    // Get existing record
-    const { data: existing } = await this.supabase
-      .from('video_analytics')
-      .select('watch_duration_seconds, last_position_seconds, completed')
-      .eq('user_id', userId)
-      .eq('video_id', videoId)
-      .maybeSingle();
+      // Use the HIGHEST position ever reached
+      const maxPosition = Math.max(
+        existing?.last_position_seconds ?? 0,
+        currentPosition
+      );
 
-    // Use MAXIMUM position ever reached
-    const maxPosition = Math.max(
-      existing?.last_position_seconds ?? 0,
-      Math.floor(currentPosition)
-    );
+      // Watch time = max position reached
+      const newWatchTime = maxPosition;
 
-    // Use maximum position as watch duration
-    const newWatchTime = Math.max(
-      existing?.watch_duration_seconds ?? 0,
-      maxPosition
-    );
+      // Check if completed (90% threshold)
+      const isCompleted = totalDuration > 0 && maxPosition >= (totalDuration * 0.9);
+      const newCompleted = existing?.completed || isCompleted;
 
-    // Mark completed if EVER reached 90%
-    const newCompleted = existing?.completed || (maxPosition >= totalDuration * 0.9);
+      console.log('💾 Saving:', {
+        video: videoId.slice(0, 8),
+        maxPos: maxPosition,
+        total: totalDuration,
+        percent: Math.round((maxPosition / totalDuration) * 100),
+        completed: newCompleted
+      });
 
-    await this.supabase
-      .from('video_analytics')
-      .update({
-        watch_duration_seconds: newWatchTime,
-        last_position_seconds: maxPosition,
-        completed: newCompleted,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('user_id', userId)
-      .eq('video_id', videoId);
+      const { error } = await this.supabase
+        .from('video_analytics')
+        .update({
+          watch_duration_seconds: newWatchTime,
+          last_position_seconds: maxPosition,
+          completed: newCompleted,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId)
+        .eq('video_id', videoId);
 
-    console.log('✅', { videoId, maxPosition, total: totalDuration, completed: newCompleted });
+      if (error) {
+        console.error('💾 Save error:', error);
+      }
 
-  } catch (err) {
-    console.error('Error:', err);
+    } catch (err) {
+      console.error('💾 Exception:', err);
+    }
   }
-}
 
   // Track post view
   async trackPostView(userId: string, postId: string) {
