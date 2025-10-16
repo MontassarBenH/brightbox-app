@@ -218,16 +218,21 @@ if (rows.length === 0) {
 
   // Aggregate per video
   const agg = new Map<
-    string,
-    { viewers: Set<string>; totalWatch: number; completedCount: number }
-  >();
+  string,
+  { viewers: Set<string>; totalWatch: number; completedCount: number; totalRows: number }
+>();
 
-  for (const r of rows) {
+for (const r of rows) {
   const vid = r.video_id as string;
-  const entry = agg.get(vid) ?? { viewers: new Set<string>(), totalWatch: 0, completedCount: 0 };
+  const entry =
+    agg.get(vid) ?? { viewers: new Set<string>(), totalWatch: 0, completedCount: 0, totalRows: 0 };
+
+  // accumulate
+  entry.totalRows += 1;
   if (r.user_id) entry.viewers.add(r.user_id as string);
   entry.totalWatch += Math.max(0, Number(r.watch_duration_seconds ?? 0));
   if (r.completed === true) entry.completedCount += 1;
+
   agg.set(vid, entry);
 }
   const videoIds = Array.from(agg.keys());
@@ -245,19 +250,24 @@ if (rows.length === 0) {
   const titleMap = new Map((vids ?? []).map(v => [v.id, v.title || 'Untitled']));
 
   const list: TopVideo[] = videoIds.map(id => {
-    const a = agg.get(id)!;
-    const views = a.viewers.size || 0;
-    const avgWatchTime = views > 0 ? Math.round(a.totalWatch / views) : 0;
-    const completion = views > 0 ? Math.round((a.completedCount / views) * 100) : 0;
+  const a = agg.get(id)!;
 
-    return {
-      id,
-      title: titleMap.get(id) ?? 'Untitled',
-      views,
-      avgWatchTime,
-      completion,
-    };
-  });
+  const views = a.viewers.size > 0 ? a.viewers.size : a.totalRows;
+
+  const avgWatchTime = views > 0 ? Math.round(a.totalWatch / views) : 0;
+
+  const completionNum =
+    views > 0 ? Math.round((a.completedCount / views) * 100) : 0;
+
+  return {
+    id,
+    title: titleMap.get(id) ?? 'Untitled',
+    views,
+    avgWatchTime,
+    completion: Number.isFinite(completionNum) ? completionNum : 0,
+  };
+});
+
 
   list.sort((x, y) => y.views - x.views);
   setTopVideos(list.slice(0, 10));
@@ -496,9 +506,14 @@ if (rows.length === 0) {
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-2">
                           <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[100px]">
-                            <div className="bg-green-500 h-2 rounded-full" style={{ width: `${video.completion}%` }} />
+                            <div
+                              className="bg-green-500 h-2 rounded-full"
+                              style={{ width: `${Math.max(0, Math.min(100, video.completion ?? 0))}%` }}
+                            />
                           </div>
-                          <span className="text-sm font-medium text-gray-600">{video.completion}%</span>
+                          <span className="text-sm font-medium text-gray-600">
+                            {(Number.isFinite(video.completion) ? video.completion : 0)}%
+                          </span>
                         </div>
                       </td>
                     </tr>

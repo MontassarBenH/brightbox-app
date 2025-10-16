@@ -142,10 +142,12 @@ export default function FeedClient({ user }: { user: User }) {
   const videoViewFired = useRef<Set<string>>(new Set());
   const postViewFired  = useRef<Set<string>>(new Set());
   const analyticsReadyRef = useRef(false);
-  const [analyticsReady, setAnalyticsReady] = useState(false);
+  const videoDurationReady = useRef<Set<string>>(new Set());
+
 
   const [headerVisible, setHeaderVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
+  const [analyticsReady, setAnalyticsReady] = useState(false);
 
   // Video refs + overlay state
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
@@ -959,80 +961,82 @@ const toggleLike = async (item: FeedItem) => {
                     {/* Video */}
                      <video
                       ref={(el) => {
-                        const key = `${item.type}-${item.id}`; // e.g. "video-<id>"
+                        const key = `${item.type}-${item.id}`; 
 
                         if (el) {
-                          // Register
+                       
                           videoRefs.current.set(key, el);
 
-                          // Clear old listeners so we don’t double-bind on re-renders
                           el.onplay = null;
+                          el.onloadedmetadata = null;
                           el.onpause = null;
                           el.onended = null;
                           el.ontimeupdate = null;
 
-                          // Throttle network updates to every 3s
+                          el.onloadedmetadata = () => {
+                              const d = Number(el.duration);
+                              if (Number.isFinite(d) && d > 0) {
+                                videoDurationReady.current.add(key);
+                              }
+                            };
+
                           let lastUpdateTime = 0;
-                          const UPDATE_INTERVAL = 3000;
+                          const UPDATE_INTERVAL = 3000;  
 
-                          // When playback starts
                           el.onplay = async () => {
-                            // Track "view" once, only after analytics is ready
-                            if (analyticsReady && !videoViewFired.current.has(key)) {
-                              videoViewFired.current.add(key);
-                              try {
-                                await analytics.trackVideoView(user.id, v.id);
-                              } catch {
-                                /* noop */
+                              if (analyticsReady && !videoViewFired.current.has(key)) {
+                                videoViewFired.current.add(key);
+                                try {
+                                  await analytics.trackVideoView(user.id, v.id);
+                                } catch {}
                               }
-                            }
+                              videoStartTimes.current.set(key, Date.now());
+                            };
 
-                            // Start a timing slice for this play segment
-                            videoStartTimes.current.set(key, Date.now());
-                          };
-
-                          // Ticks frequently during playback
                           el.ontimeupdate = async () => {
-                            if (el.paused || !el.duration) return;
+                          if (el.paused || !videoDurationReady.current.has(key)) return;
 
-                            const now = Date.now();
-                            const current = Math.floor(el.currentTime);
-                            const total = Math.floor(el.duration);
+                          const now = Date.now();
+                          const current = Math.floor(el.currentTime);
+                          const total = Math.floor(el.duration);
+                          if (!Number.isFinite(total) || total <= 0) return;   
 
-                            const startTime = videoStartTimes.current.get(key);
-                            if (!startTime) return;
+                          const startTime = videoStartTimes.current.get(key);
+                          if (!startTime) return;
 
-                            // Add elapsed since last slice
-                            const sessionElapsed = (now - startTime) / 1000;
-                            const currentTotal =
-                              (videoTotalWatched.current.get(key) || 0) + sessionElapsed;
+                          const sessionElapsed = (now - startTime) / 1000;
+                          const currentTotal = (videoTotalWatched.current.get(key) || 0) + sessionElapsed;
 
-                            // Persist local totals and reset slice start
-                            videoTotalWatched.current.set(key, currentTotal);
-                            videoStartTimes.current.set(key, now);
+                          videoTotalWatched.current.set(key, currentTotal);
+                          videoStartTimes.current.set(key, now);
 
-                            // Only send analytics periodically AND when ready
-                            if (analyticsReady && now - lastUpdateTime >= UPDATE_INTERVAL) {
-                              lastUpdateTime = now;
-                              try {
-                                await analytics.trackVideoWatchTime(
-                                  user.id,
-                                  v.id,
-                                  Math.floor(currentTotal),
-                                  current,
-                                  total
-                                );
-                              } catch {
-                                /* noop */
-                              }
-                            }
-                          };
-
-                          // Pause/End — finalize this segment and send a last update
+                          if (analyticsReady && now - lastUpdateTime >= UPDATE_INTERVAL) {
+                            lastUpdateTime = now;
+                            try {
+                              await analytics.trackVideoWatchTime(
+                                user.id,
+                                v.id,
+                                Math.floor(currentTotal),
+                                current,
+                                total
+                              );
+                            } catch {}
+                          }
+                        };
                           const finalizeSegment = async () => {
+                            // If metadata never loaded or duration invalid, skip completion math
+                            if (!videoDurationReady.current.has(key)) {
+                              videoStartTimes.current.delete(key);
+                              return;
+                            }
+
                             const startTime = videoStartTimes.current.get(key);
                             const current = Math.floor(el.currentTime || 0);
-                            const total = Math.floor(el.duration || 1);
+                            const total = Math.floor(el.duration || 0);
+                            if (!Number.isFinite(total) || total <= 0) {
+                              videoStartTimes.current.delete(key);
+                              return;
+                            }
 
                             if (startTime) {
                               const elapsed = (Date.now() - startTime) / 1000;
@@ -1047,9 +1051,7 @@ const toggleLike = async (item: FeedItem) => {
                                     current,
                                     total
                                   );
-                                } catch {
-                                  /* noop */
-                                }
+                                } catch {}
                               }
                             }
 
@@ -1060,13 +1062,12 @@ const toggleLike = async (item: FeedItem) => {
                           el.onpause = finalizeSegment;
                           el.onended = finalizeSegment;
                         } else {
-                          // Cleanup on unmount
                           videoRefs.current.delete(key);
                           videoStartTimes.current.delete(key);
                           videoTotalWatched.current.delete(key);
+                          videoDurationReady.current.delete(key);
                         }
                       }}
-                      // IMPORTANT: your src must be a playable URL; if Mux, ensure it's the .m3u8/.mp4 URL, not just an ID.
                       src={v.mux_playback_id}
                       className="max-h-full max-w-full"
                       muted
