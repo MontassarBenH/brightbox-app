@@ -141,6 +141,8 @@ export default function FeedClient({ user }: { user: User }) {
   const feedContainerRef = useRef<HTMLDivElement>(null);
   const videoViewFired = useRef<Set<string>>(new Set());
   const postViewFired  = useRef<Set<string>>(new Set());
+  const analyticsReadyRef = useRef(false);
+  const [analyticsReady, setAnalyticsReady] = useState(false);
 
   const [headerVisible, setHeaderVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
@@ -155,12 +157,24 @@ export default function FeedClient({ user }: { user: User }) {
 
   const [isTyping, setIsTyping] = useState(false);
 
-const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
 
 // one callback that will point to the currently visible scroller
 const setScrollerRef = useCallback((el: HTMLDivElement | null) => {
   if (el) setScrollEl(el);
 }, []);
+
+useEffect(() => {
+  let alive = true;
+  (async () => {
+    const { data: { user: u } } = await supabase.auth.getUser();
+    if (!u || !alive) return;
+    const sessionId = await analytics.startSession(u.id);
+    if (sessionId) analytics.setupActivityListeners();
+  })();
+  return () => { alive = false; analytics.endSession().catch(() => {}); };
+}, []);
+
 
   useEffect(() => {
   if (!scrollEl) return;
@@ -178,20 +192,33 @@ const setScrollerRef = useCallback((el: HTMLDivElement | null) => {
 }, [scrollEl]);
 
 
-  useEffect(() => {
-    let mounted = true
-    ;(async () => {
-      const { data } = await supabase.auth.getUser()
-      const uid = data.user?.id
-      if (!uid) return
-      await analytics.startSession(uid) 
-      analytics.setupActivityListeners()  
-    })()
-    return () => {
-      if (mounted) analytics.endSession().catch(() => {})
-      mounted = false
+ useEffect(() => {
+  let alive = true;
+
+  (async () => {
+    const { data: { user: u } } = await supabase.auth.getUser();
+    if (!u || !alive) return;
+
+    const sessionId = await analytics.startSession(u.id);
+    if (!alive) return;
+
+    if (sessionId) {
+      setAnalyticsReady(true);
+
+      if (!analyticsReadyRef.current) {
+        analytics.setupActivityListeners();
+        analyticsReadyRef.current = true;
+      }
+    } else {
     }
-  }, [supabase])
+  })();
+
+  return () => {
+    alive = false;
+    analytics.endSession().catch(() => {});
+  };
+}, []);
+
 
 useEffect(() => {
   if (!newMessage) return setIsTyping(false);
@@ -212,57 +239,61 @@ const jumpToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 's
 
 
   // IntersectionObserver: auto play/pause current video
-useEffect(() => {
-  const container = feedContainerRef.current;
-  if (!container) return;
+    useEffect(() => {
+      const container = feedContainerRef.current;
+      if (!container) return;
 
-  const io = new IntersectionObserver(
-    (entries) => {
-      entries.forEach(async (entry) => {
-        const el = entry.target as HTMLElement;
-        const key = el.getAttribute('data-feed-id'); 
-        if (!key) return;
+      const io = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            const el = entry.target as HTMLElement;
+            const key = el.getAttribute('data-feed-id'); 
+            if (!key) return;
 
-        const [kind, rawId] = key.split('-'); 
+            const [kind, rawId] = key.split('-');
 
-        if (kind === 'video') {
-          const v = videoRefs.current.get(key);
-          if (!v) return;
+            if (kind === 'video') {
+              const v = videoRefs.current.get(key);
+              if (!v) return;
 
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-            v.muted = true;
-            v.playsInline = true;
-            v.play().catch(() => {});
-
-            // if (!videoViewFired.current.has(key)) {
-            //   videoViewFired.current.add(key);
-            //   await analytics.trackVideoView(user.id, rawId);
-            // }
-          } else {
-            v.pause();
-          }
-        } else if (kind === 'post') {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-            if (!postViewFired.current.has(key)) {
-              postViewFired.current.add(key);
-              const post = posts.find(p => p.id === rawId);
-              await analytics.trackEvent(
-                user.id,
-                'post_view',
-                { post_id: rawId, subject_id: post?.subject_id ?? null }
-              );
+              if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+                v.muted = true;
+                v.playsInline = true;
+                v.play().catch(() => {});
+              } else {
+                v.pause();
+              }
+            } else if (kind === 'post') {
+              if (
+                analyticsReady &&
+                entry.isIntersecting &&
+                entry.intersectionRatio >= 0.6 &&
+                !postViewFired.current.has(key)
+              ) {
+                postViewFired.current.add(key);
+                const post = posts.find((p) => p.id === rawId);
+                (async () => {
+                  try {
+                    await analytics.trackEvent(user.id, 'post_view', {
+                      post_id: rawId,
+                      subject_id: post?.subject_id ?? null,
+                    });
+                  } catch {
+                  }
+                })();
+              }
             }
-          }
-        }
-      });
-    },
-    { root: container, threshold: [0.0, 0.6, 1.0] }
-  );
+          });
+        },
+        { root: container, threshold: [0.0, 0.6, 1.0] }
+      );
 
-  const sections = container.querySelectorAll('[data-feed-id]');
-  sections.forEach((s) => io.observe(s));
-  return () => io.disconnect();
-}, [videos, posts, user.id]);
+      const sections = container.querySelectorAll('[data-feed-id]');
+      sections.forEach((s) => io.observe(s));
+
+      return () => io.disconnect();
+    }, [videos, posts, user.id, analyticsReady]);
+
 
 
 
@@ -936,72 +967,88 @@ const toggleLike = async (item: FeedItem) => {
                       >
                     {/* Video */}
                      <video
-                          ref={(el) => {
-                            const key = `${item.type}-${item.id}`;
-                            if (el) {
-                              videoRefs.current.set(key, el);
+                      ref={(el) => {
+                        const key = `${item.type}-${item.id}`; // e.g. "video-<id>"
 
-                              // Remove old listeners
-                              el.onplay = null;
-                              el.onpause = null;
-                              el.onended = null;
-                              el.ontimeupdate = null;
+                        if (el) {
+                          // Register
+                          videoRefs.current.set(key, el);
 
-                              // Track when video starts playing
-                              el.onplay = async () => {
-                                console.log('Video started playing:', v.id);
-                                
-                                // Fire view event only once
-                                if (!videoViewFired.current.has(key)) {
-                                  videoViewFired.current.add(key);
-                                  await analytics.trackVideoView(user.id, v.id);
-                                }
+                          // Clear old listeners so we don’t double-bind on re-renders
+                          el.onplay = null;
+                          el.onpause = null;
+                          el.onended = null;
+                          el.ontimeupdate = null;
 
-                                // Record start time for this play session
-                                videoStartTimes.current.set(key, Date.now());
-                              };
+                          // Throttle network updates to every 3s
+                          let lastUpdateTime = 0;
+                          const UPDATE_INTERVAL = 3000;
 
-                              // Track watch time periodically
-                              el.ontimeupdate = async () => {
-                                if (el.paused) return;
+                          // When playback starts
+                          el.onplay = async () => {
+                            // Track "view" once, only after analytics is ready
+                            if (analyticsReady && !videoViewFired.current.has(key)) {
+                              videoViewFired.current.add(key);
+                              try {
+                                await analytics.trackVideoView(user.id, v.id);
+                              } catch {
+                                /* noop */
+                              }
+                            }
 
-                                const current = Math.floor(el.currentTime || 0);
-                                const total = Math.floor(el.duration || 1);
-                                
-                                // Calculate total watched time
-                                const startTime = videoStartTimes.current.get(key);
-                                if (startTime) {
-                                  const elapsed = (Date.now() - startTime) / 1000;
-                                  const currentTotal = (videoTotalWatched.current.get(key) || 0) + elapsed;
-                                  videoTotalWatched.current.set(key, currentTotal);
-                                  videoStartTimes.current.set(key, Date.now()); // Reset for next interval
-                                  
-                                  // Send update every 3 seconds of actual watch time
-                                  if (currentTotal > 0 && Math.floor(currentTotal) % 3 === 0) {
-                                    await analytics.trackVideoWatchTime(
-                                      user.id,
-                                      v.id,
-                                      Math.floor(currentTotal),
-                                      current,
-                                      total
-                                    );
-                                  }
-                                }
-                              };
+                            // Start a timing slice for this play segment
+                            videoStartTimes.current.set(key, Date.now());
+                          };
 
-                              // Handle pause and end
-                              const stopTracking = async () => {
-                                console.log('Video stopped:', v.id);
-                                
-                                // Calculate and save final watch time
-                                const startTime = videoStartTimes.current.get(key);
-                                if (startTime) {
-                                  const elapsed = (Date.now() - startTime) / 1000;
-                                  const finalTotal = (videoTotalWatched.current.get(key) || 0) + elapsed;
-                                  
-                                  const current = Math.floor(el.currentTime || 0);
-                                  const total = Math.floor(el.duration || 1);
-                                  
+                          // Ticks frequently during playback
+                          el.ontimeupdate = async () => {
+                            if (el.paused || !el.duration) return;
+
+                            const now = Date.now();
+                            const current = Math.floor(el.currentTime);
+                            const total = Math.floor(el.duration);
+
+                            const startTime = videoStartTimes.current.get(key);
+                            if (!startTime) return;
+
+                            // Add elapsed since last slice
+                            const sessionElapsed = (now - startTime) / 1000;
+                            const currentTotal =
+                              (videoTotalWatched.current.get(key) || 0) + sessionElapsed;
+
+                            // Persist local totals and reset slice start
+                            videoTotalWatched.current.set(key, currentTotal);
+                            videoStartTimes.current.set(key, now);
+
+                            // Only send analytics periodically AND when ready
+                            if (analyticsReady && now - lastUpdateTime >= UPDATE_INTERVAL) {
+                              lastUpdateTime = now;
+                              try {
+                                await analytics.trackVideoWatchTime(
+                                  user.id,
+                                  v.id,
+                                  Math.floor(currentTotal),
+                                  current,
+                                  total
+                                );
+                              } catch {
+                                /* noop */
+                              }
+                            }
+                          };
+
+                          // Pause/End — finalize this segment and send a last update
+                          const finalizeSegment = async () => {
+                            const startTime = videoStartTimes.current.get(key);
+                            const current = Math.floor(el.currentTime || 0);
+                            const total = Math.floor(el.duration || 1);
+
+                            if (startTime) {
+                              const elapsed = (Date.now() - startTime) / 1000;
+                              const finalTotal = (videoTotalWatched.current.get(key) || 0) + elapsed;
+
+                              if (analyticsReady) {
+                                try {
                                   await analytics.trackVideoWatchTime(
                                     user.id,
                                     v.id,
@@ -1009,39 +1056,42 @@ const toggleLike = async (item: FeedItem) => {
                                     current,
                                     total
                                   );
-                                  
-                                  console.log('Final watch time:', {
-                                    videoId: v.id,
-                                    watched: Math.floor(finalTotal),
-                                    current,
-                                    total
-                                  });
+                                } catch {
+                                  /* noop */
                                 }
-                                
-                                // Clear tracking for this session
-                                videoStartTimes.current.delete(key);
-                              };
-
-                              el.onpause = stopTracking;
-                              el.onended = stopTracking;
-                              
-                            } else {
-                              // Cleanup when element unmounts
-                              const key = `${item.type}-${item.id}`;
-                              videoRefs.current.delete(key);
-                              videoStartTimes.current.delete(key);
-                              videoTotalWatched.current.delete(key);
+                              }
                             }
-                          }}
-                          src={v.mux_playback_id}
-                          className="max-h-full max-w-full"
-                          muted
-                          playsInline
-                          loop
-                          preload="auto"
-                          onClick={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
-                          onTouchEnd={(e) => { e.stopPropagation(); toggleVideoPlay(`${item.type}-${item.id}`); }}
-                        />
+
+                            // Clear active slice (keep cumulative to resume)
+                            videoStartTimes.current.delete(key);
+                          };
+
+                          el.onpause = finalizeSegment;
+                          el.onended = finalizeSegment;
+                        } else {
+                          // Cleanup on unmount
+                          videoRefs.current.delete(key);
+                          videoStartTimes.current.delete(key);
+                          videoTotalWatched.current.delete(key);
+                        }
+                      }}
+                      // IMPORTANT: your src must be a playable URL; if Mux, ensure it's the .m3u8/.mp4 URL, not just an ID.
+                      src={v.mux_playback_id}
+                      className="max-h-full max-w-full"
+                      muted
+                      playsInline
+                      loop
+                      preload="auto"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleVideoPlay(`${item.type}-${item.id}`);
+                      }}
+                      onTouchEnd={(e) => {
+                        e.stopPropagation();
+                        toggleVideoPlay(`${item.type}-${item.id}`);
+                      }}
+                    />
+
 
                         {/* Center Play/Pause overlay icon */}
                         <div

@@ -18,7 +18,7 @@ export default function LoginPage() {
 
     try {
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
-        email: email.toLowerCase().trim(),
+        email: email.trim(),
         password,
       })
       if (loginError) throw loginError
@@ -30,6 +30,7 @@ export default function LoginPage() {
         .select('user_id')
         .eq('user_id', data.user.id)
         .maybeSingle()
+        console.log('admin check:', { userId: data.user.id, adminRow, adminErr });
 
       // If query errors, fall back to normal feed
       if (adminErr) {
@@ -44,13 +45,32 @@ export default function LoginPage() {
       } else {
         window.location.href = '/feed'
       }
-    } catch (err) {
-      console.error('Login error:', err)
-      const errorMessage = err instanceof Error ? err.message : 'Failed to login'
-      setError(errorMessage)
-    } finally {
-      setLoading(false)
-    }
+      } catch (err: unknown) {
+        console.error('Login error:', err);
+
+        const getMsg = (e: unknown): string | null => {
+          if (typeof e === 'object' && e && 'message' in e) {
+            const m = (e as { message?: unknown }).message;
+            return typeof m === 'string' ? m : null;
+          }
+          return null;
+        };
+
+        let msg = 'Failed to login';
+        const raw = getMsg(err)?.toLowerCase() || '';
+
+        if (raw.includes('email not confirmed')) {
+          msg = 'Please confirm your email first. Check your inbox (and spam).';
+        } else if (raw.includes('invalid login credentials')) {
+          msg = 'Invalid email or password. If you signed up with a magic link or Google, use "Sign in with magic link" below.';
+        } else {
+          msg = getMsg(err) ?? msg;
+        }
+
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
   }
 
   return (
