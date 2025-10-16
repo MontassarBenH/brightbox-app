@@ -1021,7 +1021,7 @@ const toggleLike = async (item: FeedItem) => {
                                 await analytics.trackVideoWatchTime(
                                   user.id,
                                   v.id,
-                                  Math.floor(currentTotal),
+                                  current,
                                   current,
                                   total
                                 );
@@ -1035,7 +1035,7 @@ const toggleLike = async (item: FeedItem) => {
                                 await analytics.trackVideoWatchTime(
                                   user.id,
                                   v.id,
-                                  Math.floor(currentTotal),
+                                  current,
                                   current,
                                   total
                                 );
@@ -1066,7 +1066,7 @@ const toggleLike = async (item: FeedItem) => {
                                   await analytics.trackVideoWatchTime(
                                     user.id,
                                     v.id,
-                                    Math.floor(finalTotal),
+                                    current,
                                     current,
                                     total
                                   );

@@ -169,67 +169,51 @@ export class AnalyticsService {
   async trackVideoWatchTime(
   userId: string,
   videoId: string,
-  watchedSeconds: number,
+  watchedSeconds: number,  
   currentPosition: number,
   totalDuration: number
 ) {
   try {
     const completed = currentPosition >= totalDuration * 0.9;
 
-    console.log('📊 Tracking watch time:', {
-      videoId,
-      watchedSeconds,
-      currentPosition,
-      totalDuration,
-      completedCalc: completed,
-      percentage: `${Math.round((currentPosition / totalDuration) * 100)}%`
-    });
-
-    // ✅ CRITICAL FIX: Update with the MAXIMUM of existing or new values
+    // Get existing record
     const { data: existing } = await this.supabase
       .from('video_analytics')
-      .select('watch_duration_seconds, completed')
+      .select('watch_duration_seconds, last_position_seconds, completed')
       .eq('user_id', userId)
       .eq('video_id', videoId)
       .maybeSingle();
 
-    const newWatchTime = Math.max(
-      existing?.watch_duration_seconds ?? 0,
-      Math.floor(watchedSeconds)
+    // Use MAXIMUM position ever reached
+    const maxPosition = Math.max(
+      existing?.last_position_seconds ?? 0,
+      Math.floor(currentPosition)
     );
 
-    const newCompleted = existing?.completed || completed;
+    // Use maximum position as watch duration
+    const newWatchTime = Math.max(
+      existing?.watch_duration_seconds ?? 0,
+      maxPosition
+    );
 
-    const { error } = await this.supabase
+    // Mark completed if EVER reached 90%
+    const newCompleted = existing?.completed || (maxPosition >= totalDuration * 0.9);
+
+    await this.supabase
       .from('video_analytics')
       .update({
         watch_duration_seconds: newWatchTime,
-        last_position_seconds: Math.floor(currentPosition),
-        completed: newCompleted,  // ✅ This ensures it stays true once set
+        last_position_seconds: maxPosition,
+        completed: newCompleted,
         updated_at: new Date().toISOString(),
       })
       .eq('user_id', userId)
       .eq('video_id', videoId);
 
-    if (error) {
-      console.error('❌ Error updating video analytics:', error);
-    } else {
-      console.log('✅ Updated successfully:', {
-        newWatchTime,
-        newCompleted,
-        wasAlreadyCompleted: existing?.completed
-      });
-    }
+    console.log('✅', { videoId, maxPosition, total: totalDuration, completed: newCompleted });
 
-    await this.trackEvent(userId, 'video_watch_time', {
-      video_id: videoId,
-      watched_seconds: Math.floor(watchedSeconds),
-      current_position: Math.floor(currentPosition),
-      total_duration: Math.floor(totalDuration),
-      completed,
-    });
   } catch (err) {
-    console.error('Error tracking watch time:', err);
+    console.error('Error:', err);
   }
 }
 

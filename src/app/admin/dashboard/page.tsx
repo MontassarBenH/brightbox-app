@@ -192,7 +192,7 @@ const formatDuration = (seconds: number) => {
   const { data: va, error } = await supabase
   .from('video_analytics')
   .select('video_id, user_id, watch_duration_seconds, completed, updated_at')
-  .gte('updated_at', sinceISO);
+  .order('watch_duration_seconds', { ascending: false });
 
 if (error) {
   console.error('video_analytics query error:', error);
