@@ -167,50 +167,71 @@ export class AnalyticsService {
   }
 
   async trackVideoWatchTime(
-    userId: string,
-    videoId: string,
-    watchedSeconds: number,
-    currentPosition: number,
-    totalDuration: number
-  ) {
-    try {
-      const completed = currentPosition >= totalDuration * 0.9;
+  userId: string,
+  videoId: string,
+  watchedSeconds: number,
+  currentPosition: number,
+  totalDuration: number
+) {
+  try {
+    const completed = currentPosition >= totalDuration * 0.9;
 
-      console.log('Tracking watch time:', {
-        videoId,
-        watchedSeconds,
-        currentPosition,
-        totalDuration,
-        completed
+    console.log('📊 Tracking watch time:', {
+      videoId,
+      watchedSeconds,
+      currentPosition,
+      totalDuration,
+      completedCalc: completed,
+      percentage: `${Math.round((currentPosition / totalDuration) * 100)}%`
+    });
+
+    // ✅ CRITICAL FIX: Update with the MAXIMUM of existing or new values
+    const { data: existing } = await this.supabase
+      .from('video_analytics')
+      .select('watch_duration_seconds, completed')
+      .eq('user_id', userId)
+      .eq('video_id', videoId)
+      .maybeSingle();
+
+    const newWatchTime = Math.max(
+      existing?.watch_duration_seconds ?? 0,
+      Math.floor(watchedSeconds)
+    );
+
+    const newCompleted = existing?.completed || completed;
+
+    const { error } = await this.supabase
+      .from('video_analytics')
+      .update({
+        watch_duration_seconds: newWatchTime,
+        last_position_seconds: Math.floor(currentPosition),
+        completed: newCompleted,  // ✅ This ensures it stays true once set
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId)
+      .eq('video_id', videoId);
+
+    if (error) {
+      console.error('❌ Error updating video analytics:', error);
+    } else {
+      console.log('✅ Updated successfully:', {
+        newWatchTime,
+        newCompleted,
+        wasAlreadyCompleted: existing?.completed
       });
-
-      const { error } = await this.supabase
-        .from('video_analytics')
-        .update({
-          watch_duration_seconds: Math.floor(watchedSeconds),
-          last_position_seconds: Math.floor(currentPosition),
-          completed,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', userId)
-        .eq('video_id', videoId);
-
-      if (error) {
-        console.error('Error updating video analytics:', error);
-      }
-
-      // Also track as event
-      await this.trackEvent(userId, 'video_watch_time', {
-        video_id: videoId,
-        watched_seconds: Math.floor(watchedSeconds),
-        current_position: Math.floor(currentPosition),
-        total_duration: Math.floor(totalDuration),
-        completed,
-      });
-    } catch (err) {
-      console.error('Error tracking watch time:', err);
     }
+
+    await this.trackEvent(userId, 'video_watch_time', {
+      video_id: videoId,
+      watched_seconds: Math.floor(watchedSeconds),
+      current_position: Math.floor(currentPosition),
+      total_duration: Math.floor(totalDuration),
+      completed,
+    });
+  } catch (err) {
+    console.error('Error tracking watch time:', err);
   }
+}
 
   // Track post view
   async trackPostView(userId: string, postId: string) {
