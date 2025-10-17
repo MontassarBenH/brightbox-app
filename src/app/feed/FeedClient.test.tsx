@@ -1,4 +1,3 @@
-// src/app/feed/FeedClient.test.tsx
 import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
@@ -83,8 +82,6 @@ vi.mock('@/lib/supabase/client', () => {
         // select('video_id'|'post_id').in(...)
         return chainFactory('in')
       case 'likes':
-        // either .eq(...) (for current user's likes) or .in(...) (counts)
-        // We'll support both; test code only needs empty arrays anyway.
         return chainFactory('in')
       case 'saves':
         // select('video_id, post_id').eq('user_id', ...)
