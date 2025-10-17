@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+
+      # Unit/component tests
+      - run: npm run test
+
+      # Install browsers for Playwright
+      - run: npx playwright install --with-deps
+
+      # E2E against local dev server
+      - run: npx playwright test
+
+      # E2E against production (Vercel)
+      - run: E2E_BASE_URL=https://brightbox-app.vercel.app npx playwright test
