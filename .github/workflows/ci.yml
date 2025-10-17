@@ -1,29 +1,71 @@
 name: CI
 
 on:
-  pull_request:
   push:
-    branches: [main]
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  test:
+  unit-and-e2e-local:
+    name: Unit + E2E (local server)
     runs-on: ubuntu-latest
+
+    env:
+      # expose your Supabase env vars to Next.js during CI
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
-      - run: npm ci
 
-      # Unit/component tests
-      - run: npm run test
+      - name: Install deps
+        run: npm ci
 
-      # Install browsers for Playwright
-      - run: npx playwright install --with-deps
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
 
-      # E2E against local dev server
-      - run: npx playwright test
+      # ---- UNIT (Vitest)
+      - name: Run unit tests (Vitest)
+        run: npm run test --silent
 
-      # E2E against production (Vercel)
-      - run: E2E_BASE_URL=https://brightbox-app.vercel.app npx playwright test
+      # ---- E2E against local dev server (your playwright.config.ts starts it)
+      - name: Run E2E (Playwright, local)
+        run: npx playwright test
+
+  e2e-live:
+    name: E2E (live Vercel)
+    runs-on: ubuntu-latest
+    # only run this on main pushes (skip on PRs if you want)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    env:
+      # your live site URL
+      E2E_BASE_URL: https://brightbox-app.vercel.app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      # Use a no-webServer Playwright config to hit your live site
+      - name: Run E2E (Playwright, live)
+        run: npx playwright test -c playwright.live.config.ts
