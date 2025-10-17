@@ -135,15 +135,15 @@ export default function FeedClient({ user }: { user: User }) {
 
 
 
-  const videoStartTimes = useRef<Map<string, number>>(new Map());
-  const videoTotalWatched = useRef<Map<string, number>>(new Map());
+  //const videoStartTimes = useRef<Map<string, number>>(new Map());
+  //const videoTotalWatched = useRef<Map<string, number>>(new Map());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const feedContainerRef = useRef<HTMLDivElement>(null);
   const videoViewFired = useRef<Set<string>>(new Set());
   const postViewFired  = useRef<Set<string>>(new Set());
   const analyticsReadyRef = useRef(false);
-  const videoDurationReady = useRef<Set<string>>(new Set());
-  const completionSent = useRef<Set<string>>(new Set());
+  //const videoDurationReady = useRef<Set<string>>(new Set());
+  //const completionSent = useRef<Set<string>>(new Set());
 
 
 
@@ -186,7 +186,6 @@ const setScrollerRef = useCallback((el: HTMLDivElement | null) => {
 }, [scrollEl]);
 
 
-// eslint-disable-next-line react-hooks/exhaustive-deps
 useEffect(() => {
   let alive = true;
 

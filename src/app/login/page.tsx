@@ -17,34 +17,47 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const { data, error: loginError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      })
-      if (loginError) throw loginError
-      if (!data.user || !data.session) throw new Error('Missing session after login')
+    const res = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    })
 
-      // Check if this user is an admin
-      const { data: adminRow, error: adminErr } = await supabase
-        .from('admin_users')
-        .select('user_id')
-        .eq('user_id', data.user.id)
-        .maybeSingle()
-        console.log('admin check:', { userId: data.user.id, adminRow, adminErr });
+    // Guard: res can be undefined in tests if a mock is misconfigured
+    if (!res) {
+      throw new Error('Auth call returned no result')
+    }
 
-      // If query errors, fall back to normal feed
-      if (adminErr) {
-        console.warn('admin check failed:', adminErr)
-        window.location.href = '/feed'
-        return
-      }
+    const { data, error: loginError } = res
+    if (loginError) throw loginError
+    if (!data?.user || !data?.session) throw new Error('Missing session after login')
 
-      // Redirect based on presence in admin_users
-      if (adminRow) {
-        window.location.href = '/admin'
-      } else {
-        window.location.href = '/feed'
-      }
+          const adminRes = await supabase
+            .from('admin_users')
+            .select('user_id')
+            .eq('user_id', data.user.id)
+            .maybeSingle()
+
+          if (!adminRes) {
+            window.location.href = '/feed'
+            return
+          }
+
+          const { data: adminRow, error: adminErr } = adminRes
+
+          // If query errors, fall back to normal feed
+          if (adminErr) {
+            console.warn('admin check failed:', adminErr)
+            window.location.href = '/feed'
+            return
+          }
+
+          // Redirect based on presence in admin_users
+          if (adminRow) {
+            window.location.href = '/admin'
+          } else {
+            window.location.href = '/feed'
+          }
+
       } catch (err: unknown) {
         console.error('Login error:', err);
 
@@ -90,8 +103,9 @@ export default function LoginPage() {
           )}
 
           <div>
-            <label className="block text-purple-200 mb-2">Email</label>
+            <label htmlFor="email" className="block text-purple-200 mb-2">Email</label>
             <input
+              id="email" 
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -102,8 +116,9 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-purple-200 mb-2">Password</label>
+            <label htmlFor="password" className="block text-purple-200 mb-2">Password</label>
             <input
+              id="password" 
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
