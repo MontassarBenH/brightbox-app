@@ -1,33 +1,53 @@
-// src/app/login/page.test.tsx
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import React from 'react'
-import LoginPage from './page'
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+import LoginPage from './page';
 
-let supabaseMock: {
-  auth: { signInWithPassword: ReturnType<typeof vi.fn> }
-  from: ReturnType<typeof vi.fn>
+type AdminQueryChain = {
+  select: (...args: unknown[]) => AdminQueryChain
+  eq: (...args: unknown[]) => AdminQueryChain
+  maybeSingle: () => Promise<{ data: { user_id: string } | null; error: { message: string } | null }>
 }
+
+type FromReturn = {
+  select: ReturnType<typeof vi.fn>;
+  eq: ReturnType<typeof vi.fn>;
+  maybeSingle: ReturnType<typeof vi.fn>;
+};
+
+type SupabaseMock = {
+  auth: {
+    signInWithPassword: ReturnType<typeof vi.fn>;
+  };
+  from: ReturnType<typeof vi.fn>;
+};
+
+let supabaseMock: SupabaseMock;
 
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => supabaseMock,
-}))
+}));
 
 describe('LoginPage', () => {
   beforeEach(() => {
+    const fromReturn: FromReturn = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn(),
+    };
+
     supabaseMock = {
       auth: {
         signInWithPassword: vi.fn(),
       },
-      from: vi.fn(), // we'll define return value per test
-    }
+      from: vi.fn(() => fromReturn),
+    };
 
-    // allow changing location
     Object.defineProperty(window, 'location', {
       value: { href: '' },
       writable: true,
-    })
-  })
+    });
+  });
 
   it('renders email & password fields and submit button', () => {
     render(<LoginPage />)
@@ -61,12 +81,12 @@ describe('LoginPage', () => {
     })
 
     // chain for admin lookup -> found
-    const chain = {
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({ data: { user_id: 'user-123' }, error: null }),
-    }
-    supabaseMock.from.mockReturnValueOnce(chain as any)
+   const chain: AdminQueryChain = {
+  select: vi.fn().mockReturnThis(),
+  eq: vi.fn().mockReturnThis(),
+  maybeSingle: vi.fn().mockResolvedValue({ data: { user_id: 'user-123' }, error: null }),
+}
+supabaseMock.from.mockReturnValueOnce(chain)
 
     render(<LoginPage />)
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'admin@example.com' } })
@@ -83,14 +103,14 @@ describe('LoginPage', () => {
       data: { user: { id: 'user-abc' }, session: { access_token: 'tok' } },
       error: null,
     })
-
-    // chain for admin lookup -> not found
-    const chain = {
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
-    }
-    supabaseMock.from.mockReturnValueOnce(chain as any)
+    
+// 2) not admin
+  const chain: AdminQueryChain = {
+  select: vi.fn().mockReturnThis(),
+  eq: vi.fn().mockReturnThis(),
+  maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+}
+supabaseMock.from.mockReturnValueOnce(chain) // 
 
     render(<LoginPage />)
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } })
@@ -109,12 +129,12 @@ describe('LoginPage', () => {
     })
 
     // chain for admin lookup -> error
-    const chain = {
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: { message: 'policy denied' } }),
-    }
-    supabaseMock.from.mockReturnValueOnce(chain as any)
+    const chain: AdminQueryChain = {
+  select: vi.fn().mockReturnThis(),
+  eq: vi.fn().mockReturnThis(),
+  maybeSingle: vi.fn().mockResolvedValue({ data: null, error: { message: 'policy denied' } }),
+}
+supabaseMock.from.mockReturnValueOnce(chain) //
 
     render(<LoginPage />)
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user2@example.com' } })
