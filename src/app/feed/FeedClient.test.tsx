@@ -1,6 +1,6 @@
 import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import FeedClient from './FeedClient'
 import type { User } from '@supabase/supabase-js'
 
@@ -33,33 +33,52 @@ vi.mock('@/lib/analytics', () => ({
 
 // 4) Supabase client mock
 vi.mock('@/lib/supabase/client', () => {
-  const chainFactory = (resolveOn: 'order' | 'limit' | 'eq' | 'in') => {
-    const result: any = {}
-    result.select = vi.fn().mockReturnValue(result)
-    result.order = vi.fn(
-      resolveOn === 'order'
-        ? () => Promise.resolve({ data: [], error: null })
-        : () => result
-    )
-    result.eq = vi.fn(
-      resolveOn === 'eq'
-        ? () => Promise.resolve({ data: [], error: null })
-        : () => result
-    )
-    result.in = vi.fn(
-      resolveOn === 'in'
-        ? () => Promise.resolve({ data: [], error: null })
-        : () => result
-    )
-    result.limit = vi.fn(
-      resolveOn === 'limit'
-        ? () => Promise.resolve({ data: [], error: null })
-        : () => result
-    )
-    result.delete = vi.fn().mockReturnValue(Promise.resolve({ data: null, error: null }))
-    result.insert = vi.fn().mockReturnValue(Promise.resolve({ data: null, error: null }))
-    return result
-  }
+  type QueryResult<T = unknown> = { data: T; error: null };
+
+type QueryChain = {
+  select: (...args: unknown[]) => QueryChain;
+  order: (...args: unknown[]) => QueryChain | Promise<QueryResult<unknown[]>>;
+  eq: (...args: unknown[]) => QueryChain | Promise<QueryResult<unknown[]>>;
+  in: (...args: unknown[]) => QueryChain | Promise<QueryResult<unknown[]>>;
+  limit: (...args: unknown[]) => QueryChain | Promise<QueryResult<unknown[]>>;
+  delete: (...args: unknown[]) => Promise<QueryResult<null>>;
+  insert: (...args: unknown[]) => Promise<QueryResult<null>>;
+};
+
+const chainFactory = (resolveOn: 'order' | 'limit' | 'eq' | 'in'): QueryChain => {
+  const chain = {} as QueryChain;
+
+  chain.select = vi.fn().mockReturnValue(chain);
+
+  chain.order = vi.fn(
+    resolveOn === 'order'
+      ? () => Promise.resolve({ data: [], error: null })
+      : () => chain
+  );
+
+  chain.eq = vi.fn(
+    resolveOn === 'eq'
+      ? () => Promise.resolve({ data: [], error: null })
+      : () => chain
+  );
+
+  chain.in = vi.fn(
+    resolveOn === 'in'
+      ? () => Promise.resolve({ data: [], error: null })
+      : () => chain
+  );
+
+  chain.limit = vi.fn(
+    resolveOn === 'limit'
+      ? () => Promise.resolve({ data: [], error: null })
+      : () => chain
+  );
+
+  chain.delete = vi.fn().mockResolvedValue({ data: null, error: null });
+  chain.insert = vi.fn().mockResolvedValue({ data: null, error: null });
+
+  return chain;
+};
 
   const fromRouter = (table: string) => {
     switch (table) {

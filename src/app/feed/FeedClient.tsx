@@ -210,7 +210,7 @@ useEffect(() => {
     alive = false;
     analytics.endSession().catch(() => {});
   };
-}, []);
+}, [supabase]);
 
 
 
