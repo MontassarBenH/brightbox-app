@@ -69,7 +69,3 @@ Moderation logs and content flags
 Contributing
 
 Keep changes small and easy to review. Name things clearly. Prefer boring, reliable solutions over clever ones that need a manual.
-
-License
-
-Licensed under the Apache License, Version 2.0.
