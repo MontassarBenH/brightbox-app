@@ -40,6 +40,7 @@ type ReportRow = {
   id: string;
   type: 'comment' | 'message' | 'video' | 'post';
   reason: string;
+  description: string | null;
   reporter: string | null;
   reported: string | null;
   status: 'pending' | 'approved' | 'rejected';
@@ -270,14 +271,21 @@ for (const r of rows) {
 
 
   const loadRecentReports = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('reports')
-      .select('id, content_type, reason, reporter_id, reported_user_id, status, created_at')
-      .gte('created_at', sinceISO)
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(50);
 
-    if (!data) {
+    console.log('Reports query result:', { data, error });
+
+     if (error) {
+    console.error('Reports query error:', error);
+    setRecentReports([]);
+    return;
+  }
+
+    if (!data  || data.length === 0) {
       setRecentReports([]);
       return;
     }
@@ -299,12 +307,14 @@ for (const r of rows) {
       id: r.id,
       type: r.content_type as ReportRow['type'],
       reason: r.reason,
+      description: r.description || null,
       reporter: r.reporter_id ? emails.get(r.reporter_id) ?? null : null,
       reported: r.reported_user_id ? emails.get(r.reported_user_id) ?? null : null,
       status: r.status,
       created_at: r.created_at,
     }));
 
+    console.log('Processed reports:', rows);
     setRecentReports(rows);
   };
 
@@ -537,12 +547,12 @@ for (const r of rows) {
                   key={report.id}
                   className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-purple-300 transition"
                 >
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4 flex-1">
                     <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
                       <Flag className="w-5 h-5 text-red-600" />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="font-medium text-gray-900 capitalize">{report.type}</span>
                         <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-medium">
                           {report.reason}
@@ -559,10 +569,16 @@ for (const r of rows) {
                           {report.status}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-gray-500 mb-1">
                         Reported by {report.reporter ?? 'unknown'} · About {report.reported ?? 'unknown'} ·{' '}
                         {new Date(report.created_at).toLocaleString()}
                       </p>
+                      {/* Show description if exists */}
+                      {report.description && (
+                          <p className="text-sm text-gray-600 italic mt-1">
+                            <q>{report.description}</q>
+                          </p>
+                        )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
