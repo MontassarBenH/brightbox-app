@@ -21,7 +21,7 @@ import { createClient } from '@/lib/supabase/client';
 type ReportDialogProps = {
   reportedUserId: string;
   reportedContentId: string;
-  contentType: 'comment' | 'message';
+  contentType: 'comment' | 'message' | 'video' | 'post';
   reporterUserId: string;
   trigger?: React.ReactNode;
 };

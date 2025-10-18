@@ -273,8 +273,9 @@ for (const r of rows) {
     const { data } = await supabase
       .from('reports')
       .select('id, content_type, reason, reporter_id, reported_user_id, status, created_at')
+      .gte('created_at', sinceISO)
       .order('created_at', { ascending: false })
-      .limit(10);
+      .limit(50);
 
     if (!data) {
       setRecentReports([]);

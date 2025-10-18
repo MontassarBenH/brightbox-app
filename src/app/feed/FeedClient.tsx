@@ -1189,6 +1189,23 @@ const toggleLike = async (item: FeedItem) => {
                     </Link>
                   </div>
 
+                   {/* Report Button - only show if NOT your own content */}
+                    {item.user_id !== user.id && (
+                      <div className="pointer-events-auto">
+                        <ReportDialog
+                          reportedUserId={item.user_id}
+                          reportedContentId={item.id}
+                          contentType={item.type}
+                          reporterUserId={user.id}
+                          trigger={
+                            <button className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-red-500/80 transition">
+                              <Flag className="w-7 h-7 text-white" />
+                            </button>
+                          }
+                        />
+                      </div>
+                    )}
+
                   {/* Delete (own content) */}
                   {item.user_id === user.id && (
                     <div className="pointer-events-auto">
