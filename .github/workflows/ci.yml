@@ -11,8 +11,10 @@ jobs:
     name: Unit + E2E (local server)
     runs-on: ubuntu-latest
     env:
+      # Needed for your Next.js app to boot during local E2E
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      # Optional: available to tests if you ever need them locally
       E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
       E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
       E2E_TEST_USER_ID: ${{ secrets.E2E_TEST_USER_ID }}
@@ -24,7 +26,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: npm
 
       - name: Install deps
         run: npm ci
@@ -32,9 +34,11 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
+      # ---- UNIT (Vitest)
       - name: Run unit tests (Vitest)
         run: npm run test --silent
 
+      # ---- E2E (Playwright) against local dev server
       - name: Run E2E (Playwright, local)
         run: npx playwright test
 
@@ -52,8 +56,13 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     env:
+      # Tell Playwright to hit your deployed site & skip starting a dev server
       E2E_BASE_URL: https://brightbox-app.vercel.app
       PLAYWRIGHT_NO_SERVER: '1'
+      # Test credentials (must exist in repo Secrets)
+      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+      E2E_TEST_USER_ID: ${{ secrets.E2E_TEST_USER_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,13 +71,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: npm
 
       - name: Install deps
         run: npm ci
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
+
+      - name: Sanity check env presence (no values printed)
+        run: |
+          node -e "console.log('HAS_EMAIL', !!process.env.E2E_TEST_EMAIL, 'HAS_PASS', !!process.env.E2E_TEST_PASSWORD, 'HAS_ID', !!process.env.E2E_TEST_USER_ID)"
 
       - name: Run E2E (Playwright, live)
         run: npx playwright test
@@ -81,6 +94,7 @@ jobs:
           path: playwright-report
           if-no-files-found: ignore
           retention-days: 7
+
   notify:
     name: Send notification
     runs-on: ubuntu-latest
@@ -113,4 +127,3 @@ jobs:
           curl -sS -X POST "${{ secrets.N8N_WEBHOOK_URL }}" \
             -H "Content-Type: application/json" \
             --data @body.json
-
