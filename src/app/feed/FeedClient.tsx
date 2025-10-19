@@ -916,7 +916,7 @@ const toggleLike = async (item: FeedItem) => {
           <div className="pointer-events-auto">
             <VideoUpload userId={user.id} subjects={subjects} onUploadSuccess={loadVideos} />
           </div>
-          <div className="pointer-events-auto">
+          <div className="pointer-events-auto" data-testid="fab-create-post">
             <CreatePost userId={user.id} subjects={subjects} onPostCreated={loadPosts} />
           </div>
         </div>
@@ -924,6 +924,7 @@ const toggleLike = async (item: FeedItem) => {
         {/* Scrollable Feed */}
         <div
           ref={feedContainerRef}
+          data-testid="feed-container"
           className="h-full overflow-y-auto snap-y snap-mandatory scroll-smooth scrollbar-hide"
         >
           {feedItems.length === 0 ? (
@@ -933,7 +934,7 @@ const toggleLike = async (item: FeedItem) => {
               <p className="text-sm text-gray-400 mb-6">
                 Be the first to share something!
               </p>
-              <div className="flex gap-3">
+              <div className="flex gap-3" data-testid="fab-group">
                 <VideoUpload userId={user.id} subjects={subjects} onUploadSuccess={loadVideos} />
                 <CreatePost userId={user.id} subjects={subjects} onPostCreated={loadPosts} />
               </div>
@@ -1111,6 +1112,7 @@ const toggleLike = async (item: FeedItem) => {
                   <div className="pointer-events-auto">
                     <button
                       onClick={() => toggleLike(item)}
+                      aria-label="Like"
                       className="flex flex-col items-center"
                     >
                       <div className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-white/30 transition">
@@ -1132,6 +1134,7 @@ const toggleLike = async (item: FeedItem) => {
                     <div className="pointer-events-auto">
                       <button
                         onClick={() => toggleSave(item)}
+                        aria-label="Save"
                         disabled={item.user_id === user.id}  
                         className="flex flex-col items-center disabled:opacity-50"
                       >
