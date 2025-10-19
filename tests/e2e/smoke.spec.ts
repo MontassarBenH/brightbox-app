@@ -18,7 +18,6 @@ test.describe('Smoke', () => {
     page.getByText(/brightbox|sign in|get started|welcome/i),
   ];
 
-    // wait for at least one to be visible
     const found = await Promise.any(
       candidates.map(async (loc) => {
         await expect(loc).toBeVisible({ timeout: 5000 });

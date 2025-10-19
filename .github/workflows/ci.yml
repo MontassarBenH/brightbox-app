@@ -13,6 +13,9 @@ jobs:
     env:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+      E2E_TEST_USER_ID: ${{ secrets.E2E_TEST_USER_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
