@@ -872,6 +872,7 @@ const toggleLike = async (item: FeedItem) => {
           {/* All pill */}
           <button
             onClick={() => setSelectedSubject('all')}
+            data-testid="subjects-all"
             className={`h-9 px-3 rounded-full border text-sm shrink-0 snap-start
               ${selectedSubject === 'all'
                 ? 'bg-gray-900 text-white border-gray-900'
