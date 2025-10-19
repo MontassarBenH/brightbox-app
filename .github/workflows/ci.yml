@@ -11,10 +11,8 @@ jobs:
     name: Unit + E2E (local server)
     runs-on: ubuntu-latest
     env:
-      # Needed for your Next.js app to boot during local E2E
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-      # Optional: available to tests if you ever need them locally
       E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
       E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
       E2E_TEST_USER_ID: ${{ secrets.E2E_TEST_USER_ID }}
@@ -34,11 +32,9 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      # ---- UNIT (Vitest)
       - name: Run unit tests (Vitest)
         run: npm run test --silent
 
-      # ---- E2E (Playwright) against local dev server
       - name: Run E2E (Playwright, local)
         run: npx playwright test
 
@@ -56,10 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     env:
-      # Tell Playwright to hit your deployed site & skip starting a dev server
       E2E_BASE_URL: https://brightbox-app.vercel.app
       PLAYWRIGHT_NO_SERVER: '1'
-      # Test credentials (must exist in repo Secrets)
       E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
       E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
       E2E_TEST_USER_ID: ${{ secrets.E2E_TEST_USER_ID }}
@@ -79,7 +73,7 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Sanity check env presence (no values printed)
+      - name: Sanity check env presence
         run: |
           node -e "console.log('HAS_EMAIL', !!process.env.E2E_TEST_EMAIL, 'HAS_PASS', !!process.env.E2E_TEST_PASSWORD, 'HAS_ID', !!process.env.E2E_TEST_USER_ID)"
 
@@ -99,13 +93,23 @@ jobs:
     name: Send notification
     runs-on: ubuntu-latest
     needs: [unit-and-e2e-local, e2e-live]
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: |
+      always() && 
+      github.event_name == 'push' && 
+      github.ref == 'refs/heads/main' &&
+      (needs.unit-and-e2e-local.result != 'cancelled' || needs.e2e-live.result != 'cancelled')
     steps:
       - name: Compute combined status
         id: status
         run: |
-          if [[ "${{ needs.unit-and-e2e-local.result }}" == "success" && \
-                "${{ needs.e2e-live.result }}" == "success" ]]; then
+          LOCAL="${{ needs.unit-and-e2e-local.result }}"
+          LIVE="${{ needs.e2e-live.result }}"
+          
+          echo "Local result: $LOCAL"
+          echo "Live result: $LIVE"
+          
+          # Success only if both succeeded (or live was skipped but local succeeded)
+          if [[ "$LOCAL" == "success" ]] && [[ "$LIVE" == "success" || "$LIVE" == "skipped" ]]; then
             echo "value=✅ SUCCESS" >> "$GITHUB_OUTPUT"
           else
             echo "value=❌ FAILED" >> "$GITHUB_OUTPUT"
@@ -114,6 +118,8 @@ jobs:
       - name: Send to n8n
         run: |
           STATUS="${{ steps.status.outputs.value }}"
+          
+          # Create JSON payload
           cat > body.json <<JSON
           {
             "status": "$STATUS",
@@ -124,6 +130,10 @@ jobs:
             "tests": "Local: ${{ needs.unit-and-e2e-local.result }} | Live: ${{ needs.e2e-live.result }}"
           }
           JSON
+          
+          # Send to n8n
           curl -sS -X POST "${{ secrets.N8N_WEBHOOK_URL }}" \
             -H "Content-Type: application/json" \
             --data @body.json
+          
+          echo "Notification sent: $STATUS"
