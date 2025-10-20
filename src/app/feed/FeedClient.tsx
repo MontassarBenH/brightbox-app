@@ -160,6 +160,7 @@ export default function FeedClient({ user }: { user: User }) {
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
 
   const [isTyping, setIsTyping] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
 
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
 
@@ -656,15 +657,41 @@ const toggleLike = async (item: FeedItem) => {
     })
     .subscribe();
 
+    const presenceChannel = supabase
+      .channel('online-users')
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceChannel.presenceState();
+        const online = new Set<string>();
+        Object.values(state).forEach((presences) => {
+          if (Array.isArray(presences)) {
+            presences.forEach((presence) => {
+              if (presence && typeof presence === 'object' && 'user_id' in presence) {
+                online.add(presence.user_id as string);
+              }
+            });
+          }
+        });
+        setOnlineUsers(online);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannel.track({
+            user_id: user.id,
+            online_at: new Date().toISOString(),
+          });
+        }
+      });
+
     return () => {
       supabase.removeChannel(messagesChannel);
       supabase.removeChannel(videosChannel);
       supabase.removeChannel(postsChannel);
       supabase.removeChannel(commentsChannel); 
+      supabase.removeChannel(presenceChannel);
     };
-  }, [supabase, loadSubjects, loadMessages, loadVideos, loadPosts, loadLikes, loadSaved]);
-
-  useEffect(() => {
+   }, [supabase, loadSubjects, loadMessages, loadVideos, loadPosts, loadLikes, loadSaved, user.id]);
+  
+   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
@@ -1329,7 +1356,12 @@ const toggleLike = async (item: FeedItem) => {
                                   <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-white text-xs grid place-items-center">
                                     {initial}
                                   </div>
-                                  <span className="text-[11px] text-gray-500">{senderName}</span>
+                                  <span className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                                      {senderName}
+                                      {onlineUsers.has(m.user_id) && (
+                                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="Online" />
+                                      )}
+                                    </span>
                                    {/* report button  */}
                                     <ReportDialog
                                       reportedUserId={m.user_id}
@@ -1474,7 +1506,12 @@ const toggleLike = async (item: FeedItem) => {
                           <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-white text-xs grid place-items-center">
                             {initial}
                           </div>
-                          <span className="text-[11px] text-gray-500">{senderName}</span>
+                          <span className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                              {senderName}
+                              {onlineUsers.has(m.user_id) && (
+                                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="Online" />
+                              )}
+                            </span>
                            {/* report button  */}
                                     <ReportDialog
                                       reportedUserId={m.user_id}
