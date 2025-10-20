@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import React from 'react'
 import { render, screen } from '@testing-library/react'
 
 class RedirectError extends Error {
@@ -15,7 +14,6 @@ vi.mock('next/navigation', () => {
     },
   }
 })
-const { redirect } = await import('next/navigation')
 
 const mockFrom = vi.fn()
 const mockAuthGetUser = vi.fn()
