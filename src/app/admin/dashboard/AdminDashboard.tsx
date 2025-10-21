@@ -47,6 +47,14 @@ type ReportRow = {
   created_at: string;
 };
 
+type InviteRow = {
+  email: string;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+};
+
+
 const AdminDashboard = () => {
   const supabase = createClient();
   const router = useRouter();
@@ -84,6 +92,12 @@ const AdminDashboard = () => {
   const [topVideos, setTopVideos] = useState<TopVideo[]>([]);
   const [recentReports, setRecentReports] = useState<ReportRow[]>([]);
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
+  const [pendingInvites, setPendingInvites] = useState<InviteRow[]>([]);
+  const [busyInviteEmail, setBusyInviteEmail] = useState<string | null>(null);
+  const [rejectedInvites, setRejectedInvites] = useState<InviteRow[]>([]);
+  const [inviteFilter, setInviteFilter] = useState<'pending' | 'rejected'>('pending');
+
+
 
   // ---------- helpers ----------
 const formatDuration = (seconds: number) => {
@@ -125,6 +139,8 @@ const formatDuration = (seconds: number) => {
         supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
       ]);
 
+      
+
     const { data: activeSessions } = await supabase
       .from('user_sessions')
       .select('user_id')
@@ -143,6 +159,71 @@ const formatDuration = (seconds: number) => {
       pendingReports: pendingCount ?? 0,
     });
   };
+
+  const loadPendingInvites = async () => {
+        const { data, error } = await supabase
+          .from('invites')
+          .select('email, reason, status, created_at')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) {
+          console.error('loadPendingInvites error:', error);
+          setPendingInvites([]);
+          return;
+        }
+        setPendingInvites(data ?? []);
+      };
+
+      const loadRejectedInvites = async () => {
+        const { data, error } = await supabase
+          .from('invites')
+          .select('email, reason, status, created_at')
+          .eq('status', 'rejected')
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) {
+          console.error('loadRejectedInvites error:', error);
+          setRejectedInvites([]);
+          return;
+        }
+        setRejectedInvites(data ?? []);
+      };
+
+
+      const approveInvite = async (email: string) => {
+        setBusyInviteEmail(email);
+        const { error } = await supabase
+          .from('invites')
+          .update({ status: 'approved' })
+          .eq('email', email);
+
+        setBusyInviteEmail(null);
+        if (error) {
+          console.error('approveInvite error:', error);
+          return;
+        }
+        setPendingInvites(prev => prev.filter(i => i.email !== email));
+        setRejectedInvites(prev => prev.filter(i => i.email !== email));
+      };
+
+      const rejectInvite = async (email: string) => {
+        setBusyInviteEmail(email);
+        const { error } = await supabase
+          .from('invites')
+          .update({ status: 'rejected' })
+          .eq('email', email);
+
+        setBusyInviteEmail(null);
+        if (error) {
+          console.error('rejectInvite error:', error);
+          return;
+        }
+          setPendingInvites(prev => prev.filter(i => i.email !== email));
+          setRejectedInvites(prev => [{ ...prev.find(p => p.email === email)!, status: 'rejected' }, ...prev]);
+      };
 
   const loadOnlineUsers = async () => {
     const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -350,6 +431,8 @@ for (const r of rows) {
       loadOnlineUsers();
       loadTopVideos();
       loadRecentReports();
+      loadPendingInvites();
+      loadRejectedInvites();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, sinceISO]);
@@ -604,7 +687,118 @@ for (const r of rows) {
             </div>
           )}
         </div>
-      </div>
+           {/* Invites */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8 mt-8">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900">Invites</h2>
+
+                  {/* tiny segmented control */}
+                  <div className="inline-flex items-center rounded-lg border border-gray-200 p-1">
+                    <button
+                      onClick={() => setInviteFilter('pending')}
+                      className={[
+                        'px-3 py-1.5 rounded-md text-sm font-medium transition',
+                        inviteFilter === 'pending'
+                          ? 'bg-gray-900 text-white'
+                          : 'text-gray-700 hover:bg-gray-50'
+                      ].join(' ')}
+                    >
+                      Pending
+                      <span className="ml-2 rounded-full bg-gray-100 text-gray-700 text-[11px] px-1.5 py-0.5">
+                        {pendingInvites.length}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setInviteFilter('rejected')}
+                      className={[
+                        'ml-1 px-3 py-1.5 rounded-md text-sm font-medium transition',
+                        inviteFilter === 'rejected'
+                          ? 'bg-gray-900 text-white'
+                          : 'text-gray-700 hover:bg-gray-50'
+                      ].join(' ')}
+                    >
+                      Rejected
+                      <span className="ml-2 rounded-full bg-gray-100 text-gray-700 text-[11px] px-1.5 py-0.5">
+                        {rejectedInvites.length}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* list */}
+                {(() => {
+                  const list = inviteFilter === 'pending' ? pendingInvites : rejectedInvites;
+
+                  if (list.length === 0) {
+                    return (
+                      <p className="text-sm text-gray-500">
+                        {inviteFilter === 'pending' ? 'No invite requests.' : 'No rejected invites.'}
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-4">
+                      {list.map((invite) => (
+                        <div
+                          key={invite.email}
+                          className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium text-gray-900">{invite.email}</span>
+                              <span
+                                className={[
+                                  'px-2 py-0.5 rounded text-xs font-medium',
+                                  inviteFilter === 'pending'
+                                    ? 'bg-yellow-100 text-yellow-700'
+                                    : 'bg-gray-100 text-gray-700'
+                                ].join(' ')}
+                              >
+                                {inviteFilter}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-500 mb-1">
+                              {new Date(invite.created_at).toLocaleString()}
+                            </p>
+                            {invite.reason && (
+                              <p className="text-sm text-gray-600 italic">
+                                <q>{invite.reason}</q>
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {/* Approve always available so you can restore rejected later */}
+                            <button
+                              className="p-2 hover:bg-green-50 rounded-lg transition disabled:opacity-50"
+                              onClick={() => approveInvite(invite.email)}
+                              disabled={busyInviteEmail === invite.email}
+                              title="Approve"
+                            >
+                              <CheckCircle className="w-5 h-5 text-green-600" />
+                            </button>
+
+                            {/* Only show Reject when viewing pending */}
+                            {inviteFilter === 'pending' && (
+                              <button
+                                className="p-2 hover:bg-red-50 rounded-lg transition disabled:opacity-50"
+                                onClick={() => rejectInvite(invite.email)}
+                                disabled={busyInviteEmail === invite.email}
+                                title="Reject"
+                              >
+                                <XCircle className="w-5 h-5 text-red-600" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+          </div>
     </div>
   );
 };

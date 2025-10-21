@@ -2,12 +2,10 @@ import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import AdminDashboard from '@/app/admin/dashboard/AdminDashboard';
 
-export const dynamic = 'force-dynamic'; 
-
 export default async function AdminPage() {
   const supabase = await createServerSupabaseClient();
-
   const { data: { user } } = await supabase.auth.getUser();
+
   if (!user) redirect('/login');
 
   const { data: adminUser } = await supabase
@@ -18,6 +16,5 @@ export default async function AdminPage() {
 
   if (!adminUser) redirect('/feed');
 
-  // render client dashboard
   return <AdminDashboard />;
 }
