@@ -13,7 +13,8 @@ import {
   X,
   Play,
   Flag ,
-  Pause
+  Pause,
+  Search
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -74,6 +75,7 @@ type Subject = {
 };
 
 type Profile = {
+  id: string;
   username?: string | null;
   email?: string | null;
   avatar_url?: string | null;
@@ -145,6 +147,19 @@ export default function FeedClient({   user,
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [likedItems, setLikedItems] = useState<Set<string>>(new Set());
   const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
+
+  const [searchQuery, setSearchQuery] = useState('');
+ // const [searchOpen, setSearchOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState<{
+    videos: Video[];
+    posts: Post[];
+    profiles: Profile[];
+  }>({ videos: [], posts: [], profiles: [] });
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchWrapRef = useRef<HTMLDivElement | null>(null);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
 
 
 
@@ -305,7 +320,32 @@ const jumpToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 's
     }, [videos, posts, user.id, analyticsReady]);
 
 
+    useEffect(() => {
+      const onKeyDown = (e: KeyboardEvent) => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          setIsSearchOpen(true);
+          // focus after opening
+          requestAnimationFrame(() => searchInputRef.current?.focus());
+        }
+        if (e.key === 'Escape') {
+          setIsSearchOpen(false);
+        }
+      };
+      window.addEventListener('keydown', onKeyDown);
+      return () => window.removeEventListener('keydown', onKeyDown);
+    }, []);
 
+    useEffect(() => {
+      const onClick = (e: MouseEvent) => {
+        if (!isSearchOpen) return;
+        if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) {
+          setIsSearchOpen(false);
+        }
+      };
+      window.addEventListener('mousedown', onClick);
+      return () => window.removeEventListener('mousedown', onClick);
+    }, [isSearchOpen]);
 
 
   useEffect(() => {
@@ -745,6 +785,52 @@ const toggleLike = async (item: FeedItem) => {
   return Array.from(map.entries()); 
 };
 
+// Add after your existing functions
+const handleSearch = useCallback(async (query: string) => {
+  if (!query.trim()) {
+    setSearchResults({ videos: [], posts: [], profiles: [] });
+    return;
+  }
+
+  const q = query.toLowerCase();
+
+  // Search videos
+  const { data: vids } = await supabase
+    .from('videos')
+    .select('*')
+    .eq('status', 'ready')
+    .ilike('title', `%${q}%`)
+    .limit(5);
+
+  // Search posts
+  const { data: postData } = await supabase
+    .from('posts')
+    .select('*')
+    .ilike('content', `%${q}%`)
+    .limit(5);
+
+  // Search profiles
+  const { data: profileData } = await supabase
+    .from('profiles')
+    .select('*')
+    .or(`username.ilike.%${q}%,email.ilike.%${q}%`)
+    .limit(5);
+
+  setSearchResults({
+    videos: vids ?? [],
+    posts: postData ?? [],
+    profiles: profileData ?? [],
+  });
+}, [supabase]);
+
+// Debounce search
+useEffect(() => {
+  const timer = setTimeout(() => {
+    if (searchQuery) handleSearch(searchQuery);
+  }, 300);
+  return () => clearTimeout(timer);
+}, [searchQuery, handleSearch]);
+
 const _videoApi = videoApi ?? {
     list: async (subjectId: string) => {
       let q = supabase.from('videos').select('*').eq('status', 'ready');
@@ -774,8 +860,8 @@ const _videoApi = videoApi ?? {
           >
             {/* Top bar */}
             <div className="h-[60px] flex items-center justify-between px-4 md:px-8
-                            bg-white/70 supports-[backdrop-filter]:backdrop-blur-xl
-                            border-b border-black/5">
+                 bg-white/70 supports-[backdrop-filter]:backdrop-blur-xl
+                 border-b border-black/5 relative z-20">
               {/* Brand */}
               <div className="flex items-center gap-3" data-testid="brand">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 grid place-items-center shadow-sm">
@@ -786,24 +872,164 @@ const _videoApi = videoApi ?? {
                   <p className="text-[11px] text-gray-500 hidden md:block">Learn • Share • Shine</p>
                 </div>
               </div>
+                {/* Inline Search */}
+                <div
+                  ref={searchWrapRef}
+                  className="relative hidden md:block w-[360px]"
+                  data-testid="inline-search"
+                >
+                  <div
+                    className={`group flex items-center gap-2 h-10 w-full rounded-xl border px-3 text-sm
+                      ${isSearchOpen ? 'bg-white border-gray-300' : 'bg-white/70 border-black/5 hover:border-gray-300'}
+                    `}
+                    onClick={() => {
+                      setIsSearchOpen(true);
+                      requestAnimationFrame(() => searchInputRef.current?.focus());
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" className="opacity-70">
+                      <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 5l1.5-1.5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5S14 7.01 14 9.5S11.99 14 9.5 14"/>
+                    </svg>
 
-              {/* Search (desktop) */}
-              <button
-                type="button"
-                className="hidden md:flex group items-center gap-2 h-10 w-[340px] rounded-xl
-                          bg-white/70 border border-black/5 px-3 text-sm text-gray-600
-                          hover:border-gray-300 transition"
-                aria-label="Open search" data-testid="btn-open-search"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" className="opacity-70">
-                  <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 5l1.5-1.5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5S14 7.01 14 9.5S11.99 14 9.5 14"/>
-                </svg>
-                <span className="text-gray-500">Search posts, videos, people…</span>
-                <span className="ml-auto text-[10px] text-gray-400 border px-1.5 py-0.5 rounded-md">⌘K</span>
-              </button>
+                    <input
+                      ref={searchInputRef}
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        if (!isSearchOpen) setIsSearchOpen(true);
+                      }}
+                     onFocus={() => setIsSearchOpen(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setIsSearchOpen(false);
+                      }}
+                      placeholder="Search posts, videos, people…"
+                      className="w-full bg-transparent outline-none placeholder:text-gray-500"
+                    />
+
+                    <span className="ml-auto text-[10px] text-gray-400 border px-1.5 py-0.5 rounded-md">
+                      ⌘K
+                    </span>
+                  </div>
+
+                  {/* Results dropdown */}
+                  {isSearchOpen && (
+                    <div className="absolute left-0 right-0 mt-2 rounded-xl border border-black/5 bg-white/95 backdrop-blur-sm shadow-xl overflow-hidden z-[9999]">
+                      {/* Loading / empty states */}
+                      {(!searchQuery || (
+                        searchResults.videos.length === 0 &&
+                        searchResults.posts.length === 0 &&
+                        searchResults.profiles.length === 0
+                      )) && (
+                        <div className="px-4 py-6 text-center text-sm text-gray-500">
+                          {searchQuery ? 'No results found' : 'Type to search…'}
+                        </div>
+                      )}
+
+                      {/* Results */}
+                      {(searchResults.videos.length > 0 ||
+                        searchResults.posts.length > 0 ||
+                        searchResults.profiles.length > 0) && (
+                        <div className="max-h-[60vh] overflow-y-auto p-2 space-y-4">
+                          {/* Videos */}
+                          {searchResults.videos.length > 0 && (
+                            <div>
+                              <div className="px-2 py-1 text-xs font-semibold text-gray-500 flex items-center gap-2">
+                                <VideoIcon className="w-3.5 h-3.5" /> Videos
+                              </div>
+                              <div className="mt-1">
+                                {searchResults.videos.map((v) => (
+                                  <button
+                                    key={v.id}
+                                    onClick={() => {
+                                      setIsSearchOpen(false);
+                                      document
+                                        .querySelector(`[data-feed-id="video-${v.id}"]`)
+                                        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    }}
+                                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 transition"
+                                  >
+                                    <p className="font-medium text-sm line-clamp-1">{v.title}</p>
+                                    <p className="text-[11px] text-gray-500 mt-0.5">Video</p>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Posts */}
+                          {searchResults.posts.length > 0 && (
+                            <div>
+                              <div className="px-2 py-1 text-xs font-semibold text-gray-500">Posts</div>
+                              <div className="mt-1">
+                                {searchResults.posts.map((p) => (
+                                  <button
+                                    key={p.id}
+                                    onClick={() => {
+                                      setIsSearchOpen(false);
+                                      document
+                                        .querySelector(`[data-feed-id="post-${p.id}"]`)
+                                        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    }}
+                                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 transition"
+                                  >
+                                    <p className="text-sm line-clamp-2">{p.content}</p>
+                                    <p className="text-[11px] text-gray-500 mt-0.5">Post</p>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* People */}
+                          {searchResults.profiles.length > 0 && (
+                            <div>
+                              <div className="px-2 py-1 text-xs font-semibold text-gray-500">People</div>
+                              <div className="mt-1">
+                                {searchResults.profiles.map((profile) => (
+                                  <Link
+                                      key={profile.id}
+                                      href={`/profile/${profile.id}`}
+                                      onClick={() => setIsSearchOpen(false)}
+                                      className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 transition"
+                                    >
+
+                                    <Avatar className="w-8 h-8">
+                                      <AvatarImage src={profile.avatar_url ?? undefined} />
+                                      <AvatarFallback>
+                                        {(profile.username || profile.email || 'U')[0]?.toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="min-w-0">
+                                      <p className="font-medium text-sm truncate">
+                                        {profile.username || profile.email}
+                                      </p>
+                                      <p className="text-[11px] text-gray-500">Profile</p>
+                                    </div>
+                                  </Link>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                              
 
               {/* Actions */}
               <div className="flex items-center gap-1.5">
+                {/* Mobile search button */}
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="md:hidden" 
+                          onClick={() => setMobileSearchOpen(true)}
+                          data-testid="btn-open-search-mobile"
+                        >
+                          <Search className="w-5 h-5" />
+                        </Button>
                 {/* Open chat (mobile) */}
                 <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileChatOpen(true)} data-testid="btn-open-chat-mobile">
                   <MessageCircle className="w-5 h-5" />
@@ -927,24 +1153,23 @@ const _videoApi = videoApi ?? {
             </div>
 
             {/* Subject strip with fades  */}
-    <div className="relative bg-white/60 supports-[backdrop-filter]:backdrop-blur-xl border-b border-black/5">
-      {/* edge fades */}
-      <div className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-white/60 to-transparent" />
-      <div className="pointer-events-none absolute right-0 top-0 h-full w-6 bg-gradient-to-l from-white/60 to-transparent" />
+              <div className="relative z-10 bg-white/60 supports-[backdrop-filter]:backdrop-blur-xl border-b border-black/5"> 
+              <div className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-white/60 to-transparent" />
+              <div className="pointer-events-none absolute right-0 top-0 h-full w-6 bg-gradient-to-l from-white/60 to-transparent" />
 
-      <div className="max-w-6xl mx-auto px-4 md:px-8">
-        <div className="py-2 flex gap-2 overflow-x-auto snap-x snap-mandatory scrollbar-hide">
-          {/* All pill */}
-          <button
-            onClick={() => setSelectedSubject('all')}
-            data-testid="subjects-all"
-            className={`h-9 px-3 rounded-full border text-sm shrink-0 snap-start
-              ${selectedSubject === 'all'
-                ? 'bg-gray-900 text-white border-gray-900'
-                : 'bg-white/80 text-gray-800 border-black/10 hover:bg-white active:bg-gray-50'}`}
-          >
-            All
-          </button>
+            <div className="max-w-6xl mx-auto px-4 md:px-8">
+              <div className="py-2 flex gap-2 overflow-x-auto snap-x snap-mandatory scrollbar-hide">
+                {/* All pill */}
+                <button
+                  onClick={() => setSelectedSubject('all')}
+                  data-testid="subjects-all"
+                  className={`h-9 px-3 rounded-full border text-sm shrink-0 snap-start
+                    ${selectedSubject === 'all'
+                      ? 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white/80 text-gray-800 border-black/10 hover:bg-white active:bg-gray-50'}`}
+                >
+                  All
+                </button>
 
           {/* Subjects */}
           {subjects.map((s) => {
@@ -1498,6 +1723,178 @@ const _videoApi = videoApi ?? {
 
 
     </div>
+
+    {/* Mobile Search — full-screen sheet */}
+{mobileSearchOpen && (
+  <div className="fixed inset-0 z-50 md:hidden flex flex-col bg-white" data-testid="search-mobile">
+    {/* Header */}
+    <div className="border-b p-4 flex items-center gap-3 bg-white">
+      <Button 
+        variant="ghost" 
+        size="icon" 
+        onClick={() => {
+          setMobileSearchOpen(false);
+          setSearchQuery('');
+        }}
+        data-testid="search-close-mobile"
+      >
+        <X className="w-5 h-5" />
+      </Button>
+      
+      <div className="flex-1 flex items-center gap-2 h-10 px-3 rounded-xl border border-gray-300 bg-gray-50">
+        <Search className="w-4 h-4 text-gray-400" />
+        <input
+          ref={mobileSearchInputRef}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search posts, videos, people…"
+          className="flex-1 bg-transparent outline-none text-sm placeholder:text-gray-500"
+          autoFocus
+          data-testid="search-input-mobile"
+        />
+        {searchQuery && (
+          <button 
+            onClick={() => setSearchQuery('')}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    </div>
+
+    {/* Results */}
+    <div className="flex-1 overflow-y-auto">
+      {!searchQuery ? (
+        <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-gray-100 grid place-items-center mb-4">
+            <Search className="w-8 h-8 text-gray-400" />
+          </div>
+          <p className="text-gray-600 font-medium">Start searching</p>
+          <p className="text-gray-400 text-sm mt-1">Find videos, posts, and people</p>
+        </div>
+      ) : (searchResults.videos.length === 0 &&
+          searchResults.posts.length === 0 &&
+          searchResults.profiles.length === 0) ? (
+        <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-gray-100 grid place-items-center mb-4">
+            <Search className="w-8 h-8 text-gray-400" />
+          </div>
+          <p className="text-gray-600 font-medium">No results found</p>
+          <p className="text-gray-400 text-sm mt-1">Try different keywords</p>
+        </div>
+      ) : (
+        <div className="p-4 space-y-6">
+          {/* Videos */}
+          {searchResults.videos.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <VideoIcon className="w-4 h-4 text-gray-500" />
+                <h3 className="font-semibold text-sm text-gray-700">Videos</h3>
+                <span className="text-xs text-gray-400">({searchResults.videos.length})</span>
+              </div>
+              <div className="space-y-2">
+                {searchResults.videos.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => {
+                      setMobileSearchOpen(false);
+                      setSearchQuery('');
+                      document
+                        .querySelector(`[data-feed-id="video-${v.id}"]`)
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }}
+                    className="w-full text-left p-3 rounded-xl bg-white border border-gray-200 active:bg-gray-50 transition"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-100 to-indigo-100 grid place-items-center flex-shrink-0">
+                        <VideoIcon className="w-6 h-6 text-purple-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm line-clamp-2">{v.title}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {formatTime(v.created_at)} • {v.likes_count} likes
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Posts */}
+          {searchResults.posts.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <MessageCircle className="w-4 h-4 text-gray-500" />
+                <h3 className="font-semibold text-sm text-gray-700">Posts</h3>
+                <span className="text-xs text-gray-400">({searchResults.posts.length})</span>
+              </div>
+              <div className="space-y-2">
+                {searchResults.posts.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      setMobileSearchOpen(false);
+                      setSearchQuery('');
+                      document
+                        .querySelector(`[data-feed-id="post-${p.id}"]`)
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }}
+                    className="w-full text-left p-3 rounded-xl bg-white border border-gray-200 active:bg-gray-50 transition"
+                  >
+                    <p className="text-sm line-clamp-3">{p.content}</p>
+                    <p className="text-xs text-gray-500 mt-2">
+                      {formatTime(p.created_at)} • {p.likes_count} likes
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* People */}
+          {searchResults.profiles.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <Heart className="w-4 h-4 text-gray-500" />
+                <h3 className="font-semibold text-sm text-gray-700">People</h3>
+                <span className="text-xs text-gray-400">({searchResults.profiles.length})</span>
+              </div>
+              <div className="space-y-2">
+                {searchResults.profiles.map((profile) => (
+                  <Link
+                    key={profile.id}
+                    href={`/profile/${profile.id}`}
+                    onClick={() => {
+                      setMobileSearchOpen(false);
+                      setSearchQuery('');
+                    }}
+                    className="flex items-center gap-3 p-3 rounded-xl bg-white border border-gray-200 active:bg-gray-50 transition"
+                  >
+                    <Avatar className="w-12 h-12 flex-shrink-0">
+                      <AvatarImage src={profile.avatar_url ?? undefined} />
+                      <AvatarFallback className="text-sm">
+                        {(profile.username || profile.email || 'U')[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">
+                        {profile.username || profile.email}
+                      </p>
+                      <p className="text-xs text-gray-500">View profile</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
    {/* Mobile Chat — full-screen sheet */}
 {mobileChatOpen && (
