@@ -831,7 +831,7 @@ useEffect(() => {
   return () => clearTimeout(timer);
 }, [searchQuery, handleSearch]);
 
-const _videoApi = videoApi ?? {
+/*const _videoApi = videoApi ?? {
     list: async (subjectId: string) => {
       let q = supabase.from('videos').select('*').eq('status', 'ready');
       if (subjectId !== 'all') q = q.eq('subject_id', subjectId);
@@ -848,7 +848,7 @@ const _videoApi = videoApi ?? {
       return data ?? [];
     },
   };
-
+*/
   return (
   <div className="flex flex-col h-screen bg-gray-50" data-testid="feed-root">
     {/* Header with auto-hide */}
