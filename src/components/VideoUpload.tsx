@@ -66,10 +66,13 @@ export function VideoUpload({ userId, subjects, onUploadSuccess }: VideoUploadPr
       const fileName = `${userId}/${Date.now()}.${ext}`;
       setProgress(30);
 
-      // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('videos')
-        .upload(fileName, file, { cacheControl: '3600', upsert: false });
+      // Upload to Supabase Storage with a long cache TTL
+       const { error: uploadError } = await supabase.storage
+      .from('videos')
+      .upload(fileName, file, {
+        cacheControl: '31536000', // seconds
+        upsert: false,
+      });
 
       if (uploadError) {
         throw uploadError;
