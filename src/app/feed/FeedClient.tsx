@@ -116,8 +116,21 @@ type Post = {
 type VideoItem = Video & { type: 'video' }
 type PostItem  = Post  & { type: 'post' }
 type FeedItem  = VideoItem | PostItem
+type FeedClientProps = {
+  user: User;
+  videoApi?: {
+    list: (subjectId: string) => Promise<Video[]>;
+  };
+  postApi?: {
+    list: (subjectId: string) => Promise<Post[]>;
+  };
+};
 
-export default function FeedClient({ user }: { user: User }) {
+
+export default function FeedClient({   user,
+  videoApi,
+  postApi,
+}: FeedClientProps) {
   const supabase = createClient();
   const router = useRouter();
 
@@ -208,9 +221,11 @@ useEffect(() => {
   })();
 
   return () => {
-    alive = false;
-    analytics.endSession().catch(() => {});
-  };
+  alive = false;
+  if (analytics?.endSession) {
+    Promise.resolve(analytics.endSession()).catch(() => {});
+  }
+};
 }, [supabase]);
 
 
@@ -730,20 +745,39 @@ const toggleLike = async (item: FeedItem) => {
   return Array.from(map.entries()); 
 };
 
+const _videoApi = videoApi ?? {
+    list: async (subjectId: string) => {
+      let q = supabase.from('videos').select('*').eq('status', 'ready');
+      if (subjectId !== 'all') q = q.eq('subject_id', subjectId);
+      const { data } = await q.order('created_at', { ascending: false }).limit(20);
+      return data ?? [];
+    },
+  };
+
+  const _postApi = postApi ?? {
+    list: async (subjectId: string) => {
+      let q = supabase.from('posts').select('*');
+      if (subjectId !== 'all') q = q.eq('subject_id', subjectId);
+      const { data } = await q.order('created_at', { ascending: false }).limit(20);
+      return data ?? [];
+    },
+  };
+
   return (
-  <div className="flex flex-col h-screen bg-gray-50">
+  <div className="flex flex-col h-screen bg-gray-50" data-testid="feed-root">
     {/* Header with auto-hide */}
       <header
             className={`fixed top-0 left-0 right-0 z-40 transition-transform duration-300 ${
               headerVisible ? 'translate-y-0' : '-translate-y-full'
             }`}
+            data-testid="feed-header"
           >
             {/* Top bar */}
             <div className="h-[60px] flex items-center justify-between px-4 md:px-8
                             bg-white/70 supports-[backdrop-filter]:backdrop-blur-xl
                             border-b border-black/5">
               {/* Brand */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3" data-testid="brand">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 grid place-items-center shadow-sm">
                   <VideoIcon className="w-5 h-5 text-white" />
                 </div>
@@ -759,7 +793,7 @@ const toggleLike = async (item: FeedItem) => {
                 className="hidden md:flex group items-center gap-2 h-10 w-[340px] rounded-xl
                           bg-white/70 border border-black/5 px-3 text-sm text-gray-600
                           hover:border-gray-300 transition"
-                aria-label="Open search"
+                aria-label="Open search" data-testid="btn-open-search"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" className="opacity-70">
                   <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 5l1.5-1.5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5S14 7.01 14 9.5S11.99 14 9.5 14"/>
@@ -771,20 +805,20 @@ const toggleLike = async (item: FeedItem) => {
               {/* Actions */}
               <div className="flex items-center gap-1.5">
                 {/* Open chat (mobile) */}
-                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileChatOpen(true)}>
+                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileChatOpen(true)} data-testid="btn-open-chat-mobile">
                   <MessageCircle className="w-5 h-5" />
                 </Button>
 
                 {/* Filter drawer */}
                 <Sheet>
                   <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label="Open filters">
+                    <Button variant="ghost" size="icon" aria-label="Open filters" data-testid="btn-open-filters">
                       <Filter className="w-5 h-5" />
                     </Button>
                   </SheetTrigger>
 
                   {/* Compact mobile filter content */}
-                  <SheetContent side="right" className="w-full sm:max-w-sm">
+                  <SheetContent side="right" className="w-full sm:max-w-sm" data-testid="filters-sheet">
                     <SheetHeader>
                       <SheetTitle>Filter by Subject</SheetTitle>
                     </SheetHeader>
@@ -794,6 +828,7 @@ const toggleLike = async (item: FeedItem) => {
                       <div className="flex gap-2 mb-2">
                         <button
                           onClick={() => setSelectedSubject('all')}
+                          data-testid="subjects-all"
                           className={`h-9 px-3 rounded-full border text-sm shrink-0
                             ${selectedSubject === 'all'
                               ? 'bg-gray-900 text-white border-gray-900'
@@ -805,6 +840,7 @@ const toggleLike = async (item: FeedItem) => {
                         <button
                           onClick={() => setSelectedSubject('all')}
                           className="h-9 px-3 rounded-full border text-sm text-gray-600 bg-white border-black/10 active:bg-gray-50"
+                          data-testid="subjects-clear"
                         >
                           Clear
                         </button>
@@ -818,6 +854,7 @@ const toggleLike = async (item: FeedItem) => {
                             <button
                               key={s.id}
                               onClick={() => setSelectedSubject(s.id)}
+                              data-testid={`subjects-pill-${s.id}`}
                               title={s.name}
                               className={`h-9 px-3 rounded-full border text-sm text-left truncate
                                 ${active
@@ -836,7 +873,7 @@ const toggleLike = async (item: FeedItem) => {
                     </div>
 
                     <div className="mt-6 flex gap-2">
-                      <Button className="flex-1 h-9 rounded-full" onClick={() => {/*  */}}>
+                      <Button className="flex-1 h-9 rounded-full" data-testid="filters-done" onClick={() => {/*  */}}>
                         Done
                       </Button>
                       <Button
@@ -852,7 +889,7 @@ const toggleLike = async (item: FeedItem) => {
 
                 {/* Notifications (placeholder) */}
                 <div className="relative">
-                  <Button variant="ghost" size="icon" aria-label="Notifications">
+                  <Button variant="ghost" size="icon" aria-label="Notifications" data-testid="btn-notifications">
                     <Heart className="w-5 h-5" />
                   </Button>
                   <span className="absolute right-2 top-2 w-2 h-2 rounded-full bg-rose-500" />
@@ -865,6 +902,7 @@ const toggleLike = async (item: FeedItem) => {
                       type="button"
                       className="outline-none rounded-full focus-visible:ring-2 focus-visible:ring-purple-500"
                       aria-label="Open user menu"
+                      data-testid="btn-user-menu"
                     >
                       <Avatar className="w-8 h-8">
                         <AvatarImage src="" alt={user.email ?? 'user'} />
@@ -877,10 +915,10 @@ const toggleLike = async (item: FeedItem) => {
                     <DropdownMenuLabel className="truncate">{user.email ?? 'Account'}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
-                      <Link href={`/profile/${user.id}`} className="w-full">Profile</Link>
+                      <Link href={`/profile/${user.id}`} className="w-full" data-testid="menu-profile">Profile</Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
+                    <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600" data-testid="menu-logout">
                       Log out
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -915,6 +953,7 @@ const toggleLike = async (item: FeedItem) => {
               <button
                 key={s.id}
                 onClick={() => setSelectedSubject(s.id)}
+                data-testid={`subjects-top-pill-${s.id}`} 
                 className={`h-9 px-3 rounded-full border text-sm shrink-0 snap-start max-w-[55vw] md:max-w-none
                   ${active
                     ? 'text-white border-transparent'
@@ -941,7 +980,7 @@ const toggleLike = async (item: FeedItem) => {
       <main className="flex-1 overflow-hidden relative">
         {/* Floating Action Buttons */}
         <div className="absolute bottom-6 right-6 z-20 md:z-30 flex flex-col gap-3 pointer-events-none">
-          <div className="pointer-events-auto">
+          <div className="pointer-events-auto" data-testid="fab-video-upload">
             <VideoUpload userId={user.id} subjects={subjects} onUploadSuccess={loadVideos} />
           </div>
           <div className="pointer-events-auto" data-testid="fab-create-post">
@@ -956,7 +995,7 @@ const toggleLike = async (item: FeedItem) => {
           className="h-full overflow-y-auto snap-y snap-mandatory scroll-smooth scrollbar-hide"
         >
           {feedItems.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center" data-testid="empty-state">
               <VideoIcon className="w-16 h-16 text-gray-400 mb-4" />
               <p className="text-gray-500 text-lg mb-2">No content yet</p>
               <p className="text-sm text-gray-400 mb-6">
@@ -1084,6 +1123,7 @@ const toggleLike = async (item: FeedItem) => {
                       muted
                       playsInline
                       loop
+                      data-testid={`video-${v.id}`} 
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleVideoPlay(`${item.type}-${item.id}`);
@@ -1100,6 +1140,7 @@ const toggleLike = async (item: FeedItem) => {
                           className={`pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-200 ${
                             overlayVisibleId === `${item.type}-${item.id}` ? 'opacity-100' : 'opacity-0'
                           }`}
+                          data-testid={`video-overlay-${v.id}`}
                         >
                           <div className="bg-black/40 rounded-full p-4">
                             {overlayIcon === 'play' ? (
@@ -1118,6 +1159,7 @@ const toggleLike = async (item: FeedItem) => {
                     return (
                       <div
                         className="w-full h-full flex items-center justify-center p-8"
+                        data-testid={`post-bg-${item.id}`}
                         style={{
                           backgroundImage: p.background_image
                             ? `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url(${p.background_image})`
@@ -1126,7 +1168,7 @@ const toggleLike = async (item: FeedItem) => {
                           backgroundPosition: 'center',
                         }}
                       >
-                        <p className="text-white text-2xl md:text-4xl font-bold text-center max-w-2xl leading-relaxed">
+                        <p className="text-white text-2xl md:text-4xl font-bold text-center max-w-2xl leading-relaxed" data-testid={`post-content-${item.id}`}>
                           {p.content}
                         </p>
                       </div>
@@ -1142,6 +1184,7 @@ const toggleLike = async (item: FeedItem) => {
                       onClick={() => toggleLike(item)}
                       aria-label="Like"
                       className="flex flex-col items-center"
+                      data-testid={`like-btn-${item.id}`} 
                     >
                       <div className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-white/30 transition">
                         <Heart
@@ -1152,7 +1195,7 @@ const toggleLike = async (item: FeedItem) => {
                           }`}
                         />
                       </div>
-                      <span className="text-white text-xs mt-1 font-semibold">
+                      <span className="text-white text-xs mt-1 font-semibold" data-testid={`like-count-${item.id}`}>
                         {item.likes_count}
                       </span>
                     </button>
@@ -1165,6 +1208,7 @@ const toggleLike = async (item: FeedItem) => {
                         aria-label="Save"
                         disabled={item.user_id === user.id}  
                         className="flex flex-col items-center disabled:opacity-50"
+                        data-testid={`save-btn-${item.id}`}
                       >
                         <div className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-white/30 transition">
                           {savedItems.has(`${item.type}-${item.id}`) ? (
@@ -1183,7 +1227,7 @@ const toggleLike = async (item: FeedItem) => {
 
 
                   {/* Comments */}
-                  <div className="pointer-events-auto">
+                  <div className="pointer-events-auto" data-testid={`comments-${item.id}`}>
                     <Comments
                       itemId={item.id}
                       itemType={item.type}
@@ -1229,7 +1273,7 @@ const toggleLike = async (item: FeedItem) => {
                           contentType={item.type}
                           reporterUserId={user.id}
                           trigger={
-                            <button className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-red-500/80 transition">
+                            <button className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-red-500/80 transition" data-testid={`report-btn-${item.id}`}>
                               <Flag className="w-7 h-7 text-white" />
                             </button>
                           }
@@ -1243,6 +1287,7 @@ const toggleLike = async (item: FeedItem) => {
                       <button
                         onClick={() => setItemToDelete(item)}
                         className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-red-500 transition"
+                        data-testid={`delete-btn-${item.id}`} 
                       >
                         <Trash2 className="w-7 h-7 text-white" />
                       </button>
@@ -1251,7 +1296,7 @@ const toggleLike = async (item: FeedItem) => {
                 </div>
 
                 {/* Info Overlay (bottom) */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4 md:p-6 pl-20 md:pl-24">
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4 md:p-6 pl-20 md:pl-24" data-testid={`info-${item.type}-${item.id}`}>
                   <div className="max-w-4xl">
                     {item.type === 'video' && (
                       <h3 className="text-white font-semibold text-base md:text-lg mb-2 line-clamp-2">
@@ -1266,6 +1311,7 @@ const toggleLike = async (item: FeedItem) => {
                       onClick={(e) => {
                         e.stopPropagation();
                       }}
+                      data-testid={`user-link-${item.user_id}`}
                     >
                       <Avatar className="w-10 h-10 md:w-12 md:h-12 border-2 border-white flex-shrink-0">
                         <AvatarFallback className="text-xs">
@@ -1289,6 +1335,7 @@ const toggleLike = async (item: FeedItem) => {
                           backgroundColor: subjects.find(s => s.id === item.subject_id)?.color,
                         }}
                         className="text-white text-xs"
+                        data-testid={`subject-badge-${item.subject_id}`}
                       >
                         {subjects.find(s => s.id === item.subject_id)?.icon}{' '}
                         {subjects.find(s => s.id === item.subject_id)?.name}
@@ -1303,7 +1350,7 @@ const toggleLike = async (item: FeedItem) => {
       </main>
 
       {/* Desktop Chat — modern glass panel */}
-          <aside className="relative hidden md:flex w-[24rem] border-l bg-white/70 backdrop-blur-xl supports-[backdrop-filter]:bg-white/50 flex-col h-full">
+          <aside className="relative hidden md:flex w-[24rem] border-l bg-white/70 backdrop-blur-xl supports-[backdrop-filter]:bg-white/50 flex-col h-full" data-testid="chat-desktop">
             {/* Header */}
             <div className="border-b p-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1315,13 +1362,14 @@ const toggleLike = async (item: FeedItem) => {
                   <p className="text-xs text-gray-500 -mt-0.5">Classwide messages</p>
                 </div>
               </div>
-              <Badge variant="secondary">{messages.length}</Badge>
+              <Badge variant="secondary" data-testid="chat-count" >{messages.length}</Badge>
             </div>
 
             {/* Messages scroller */}
             <div
               ref={!mobileChatOpen ? setScrollerRef : undefined}
               className="flex-1 overflow-y-auto p-4 space-y-6"
+              data-testid="chat-messages"
             >
               {messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center">
@@ -1400,7 +1448,7 @@ const toggleLike = async (item: FeedItem) => {
               )}
 
               {/* Stick target for "jump to bottom" */}
-              <div ref={messagesEndRef} />
+              <div ref={messagesEndRef} data-testid="chat-end" />
             </div>
 
             {/* Jump-to-bottom (desktop) */}
@@ -1409,6 +1457,7 @@ const toggleLike = async (item: FeedItem) => {
                 onClick={jumpToBottom}
                 className="absolute bottom-20 right-4 px-3 py-1.5 rounded-full bg-gray-900 text-white text-xs shadow-lg"
                 aria-label="Jump to newest"
+                data-testid="chat-jump"
               >
                 New messages ↓
               </button>
@@ -1416,7 +1465,7 @@ const toggleLike = async (item: FeedItem) => {
 
             {/* Typing indicator */}
             {isTyping && (
-              <div className="px-4 pb-2 text-gray-500 text-xs flex items-center gap-2">
+              <div className="px-4 pb-2 text-gray-500 text-xs flex items-center gap-2" data-testid="chat-typing">
                 <div className="w-5 h-5 rounded-full bg-white/80 border border-black/5 grid place-items-center">
                   <span className="animate-pulse">…</span>
                 </div>
@@ -1438,6 +1487,7 @@ const toggleLike = async (item: FeedItem) => {
                     }
                   }}
                   className="border-0 bg-transparent focus-visible:ring-0"
+                  data-testid="chat-input"
                 />
                 <Button onClick={sendMessage} disabled={!newMessage.trim()} size="icon" className="rounded-xl">
                   <Send className="h-4 w-4" />
@@ -1451,7 +1501,7 @@ const toggleLike = async (item: FeedItem) => {
 
    {/* Mobile Chat — full-screen sheet */}
 {mobileChatOpen && (
-  <div className="fixed inset-0 z-50 md:hidden flex flex-col bg-gradient-to-b from-white via-white/80 to-white/70 backdrop-blur-xl">
+  <div className="fixed inset-0 z-50 md:hidden flex flex-col bg-gradient-to-b from-white via-white/80 to-white/70 backdrop-blur-xl" data-testid="chat-mobile">
     {/* Header */}
     <div className="border-b p-4 flex items-center justify-between bg-white/80 backdrop-blur">
       <div className="flex items-center gap-2">
@@ -1549,7 +1599,7 @@ const toggleLike = async (item: FeedItem) => {
       )}
 
       {/* Stick target for jump-to-bottom */}
-      <div ref={messagesEndRef} />
+      <div ref={messagesEndRef} data-testid="chat-end-mobile" />
     </div>
 
     {/* Jump-to-bottom (mobile) */}
@@ -1558,6 +1608,7 @@ const toggleLike = async (item: FeedItem) => {
         onClick={jumpToBottom}
         className="absolute bottom-24 right-4 px-3 py-1.5 rounded-full bg-gray-900 text-white text-xs shadow-lg"
         aria-label="Jump to newest"
+        data-testid="chat-jump-mobile"
       >
         New messages ↓
       </button>
@@ -1587,12 +1638,14 @@ const toggleLike = async (item: FeedItem) => {
             }
           }}
           className="border-0 bg-transparent focus-visible:ring-0"
+          data-testid="chat-input-mobile"
         />
         <Button
           onClick={sendMessage}
           disabled={!newMessage.trim()}
           size="icon"
           className="rounded-xl"
+          data-testid="chat-send-mobile"
         >
           <Send className="h-4 w-4" />
         </Button>
@@ -1605,7 +1658,7 @@ const toggleLike = async (item: FeedItem) => {
 
     {/* Delete Confirmation Dialog */}
     <AlertDialog open={!!itemToDelete} onOpenChange={(open) => { if (!open) setItemToDelete(null); }}>
-      <AlertDialogContent>
+      <AlertDialogContent data-testid="delete-dialog">
         <AlertDialogHeader>
           <AlertDialogTitle>Delete item?</AlertDialogTitle>
           <AlertDialogDescription>
@@ -1613,11 +1666,12 @@ const toggleLike = async (item: FeedItem) => {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={deleting} data-testid="delete-cancel">Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => itemToDelete && deleteItem(itemToDelete)}
             disabled={deleting}
             className="bg-red-500 hover:bg-red-600"
+            data-testid="delete-confirm"
           >
             {deleting ? 'Deleting...' : 'Delete'}
           </AlertDialogAction>

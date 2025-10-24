@@ -1,5 +1,6 @@
 import React from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import FeedClient from './FeedClient'
 import type { User } from '@supabase/supabase-js'
@@ -23,7 +24,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/analytics', () => ({
   analytics: {
     startSession: vi.fn().mockResolvedValue('session-1'),
-    endSession: vi.fn().mockResolvedValue(undefined),
+    endSession: vi.fn().mockResolvedValue(undefined), 
     setupActivityListeners: vi.fn(),
     trackEvent: vi.fn().mockResolvedValue(undefined),
     trackVideoView: vi.fn().mockResolvedValue(undefined),
@@ -158,4 +159,95 @@ describe('FeedClient', () => {
       expect(screen.getByText(/No content yet/i)).toBeInTheDocument()
     })
   })
+  // Add these tests to your existing describe block:
+
+it('renders subject filters and allows filtering', async () => {
+  render(<FeedClient user={fakeUser} />)
+  
+  // Wait for subjects to load
+  await waitFor(() => {
+    expect(screen.getByTestId('subjects-all')).toBeInTheDocument()
+  })
+  
+  // Click 'All' filter
+  const allBtn = screen.getByTestId('subjects-all')
+  fireEvent.click(allBtn)
+  
+  expect(allBtn).toHaveClass('bg-gray-900')
+})
+
+it('opens and closes mobile chat', async () => {
+  render(<FeedClient user={fakeUser} />)
+  
+  const openChatBtn = screen.getByTestId('btn-open-chat-mobile')
+  fireEvent.click(openChatBtn)
+  
+  await waitFor(() => {
+    expect(screen.getByTestId('chat-mobile')).toBeInTheDocument()
+  })
+  
+  // Close it
+  const closeBtn = screen.getByText(/Close/i)
+  fireEvent.click(closeBtn)
+  
+  await waitFor(() => {
+    expect(screen.queryByTestId('chat-mobile')).not.toBeInTheDocument()
+  })
+})
+
+it('opens filter sheet on desktop', async () => {
+  render(<FeedClient user={fakeUser} />)
+  
+  const filterBtn = screen.getByTestId('btn-open-filters')
+  fireEvent.click(filterBtn)
+  
+  await waitFor(() => {
+    expect(screen.getByTestId('filters-sheet')).toBeInTheDocument()
+  })
+})
+
+it('renders user menu and logout option', async () => {
+  const user = userEvent.setup()
+  render(<FeedClient user={fakeUser} />)
+  
+  const userMenuBtn = screen.getByTestId('btn-user-menu')
+  await user.click(userMenuBtn)
+  
+  await waitFor(() => {
+    expect(screen.getByTestId('menu-logout')).toBeInTheDocument()
+  })
+  
+  expect(screen.getByTestId('menu-profile')).toBeInTheDocument()
+})
+
+it('renders desktop chat with messages area', async () => {
+  render(<FeedClient user={fakeUser} />)
+  
+  expect(await screen.findByTestId('chat-desktop')).toBeInTheDocument()
+  expect(screen.getByTestId('chat-messages')).toBeInTheDocument()
+  expect(screen.getByTestId('chat-input')).toBeInTheDocument()
+})
+
+it('allows typing and sending a message', async () => {
+  render(<FeedClient user={fakeUser} />)
+  
+  const input = screen.getByTestId('chat-input')
+  fireEvent.change(input, { target: { value: 'Hello test' } })
+  
+  expect(input).toHaveValue('Hello test')
+  
+  // Simulate Enter key
+  fireEvent.keyDown(input, { key: 'Enter', shiftKey: false })
+  
+  await waitFor(() => {
+    expect(input).toHaveValue('')
+  })
+})
+
+it('shows FAB buttons for video and post creation', async () => {
+  render(<FeedClient user={fakeUser} />)
+  
+  expect(await screen.findByTestId('fab-video-upload')).toBeInTheDocument()
+  expect(screen.getByTestId('fab-create-post')).toBeInTheDocument()
+})
 })
