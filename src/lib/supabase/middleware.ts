@@ -24,43 +24,44 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Get the current session
   const { data: { session } } = await supabase.auth.getSession()
   const { pathname } = request.nextUrl
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/signup', '/forgot-password']
-  const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
+  const publicRoutes = ['/', '/login', '/signup', '/request-invite', '/forgot-password']
+  const isPublicRoute = publicRoutes.some(route => pathname === route || pathname.startsWith(route))
 
-  // If no session and trying to access protected route, redirect to login
+  // If no session and trying to access protected route, redirect to LOGIN (not home)
   if (!session && !isPublicRoute) {
     const redirectUrl = new URL('/login', request.url)
     redirectUrl.searchParams.set('redirectTo', pathname)
     return NextResponse.redirect(redirectUrl)
   }
 
-  // If has session and trying to access login, redirect to feed
-  if (session && pathname.startsWith('/login')) {
+  // If has session and trying to access login/signup, redirect to feed
+  if (session && (pathname === '/login' || pathname === '/signup')) {
     return NextResponse.redirect(new URL('/feed', request.url))
   }
 
-  //  Protect admin routes with server-side check
+  // If authenticated user tries to access home page, redirect to feed
+  if (session && pathname === '/') {
+    return NextResponse.redirect(new URL('/feed', request.url))
+  }
+
+  // CRITICAL: Protect admin routes with server-side check
   if (pathname.startsWith('/admin')) {
     if (!session) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
 
-    // Server-side admin verification
     const { data: adminUser, error } = await supabase
       .from('admin_users')
       .select('user_id')
       .eq('user_id', session.user.id)
       .maybeSingle()
 
-    // If not an admin or error occurred, deny access
     if (!adminUser || error) {
       console.warn(`Unauthorized admin access attempt: ${session.user.id}`)
-      // Return 403 Forbidden instead of redirect to prevent enumeration
       return new NextResponse('Forbidden', { status: 403 })
     }
   }
@@ -68,18 +69,8 @@ export async function updateSession(request: NextRequest) {
   return response
 }
 
-// Configure which routes the middleware runs on
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public files (public folder)
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
-
-//Rate Limiting work on progress
