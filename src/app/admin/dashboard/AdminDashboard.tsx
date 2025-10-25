@@ -36,6 +36,9 @@ type TopVideo = {
   completion: number;  
 };
 
+type ReportStatus = 'pending' | 'reviewed' | 'resolved' | 'dismissed';
+
+
 type ReportRow = {
   id: string;
   type: 'comment' | 'message' | 'video' | 'post';
@@ -43,7 +46,7 @@ type ReportRow = {
   description: string | null;
   reporter: string | null;
   reported: string | null;
-  status: 'pending' | 'approved' | 'rejected';
+  status: ReportStatus;
   created_at: string;
 };
 
@@ -350,6 +353,18 @@ for (const r of rows) {
   setTopVideos(list.slice(0, 10));
 };
 
+const updateReportStatus = async (id: string, status: ReportStatus) => {
+  setBusyReportId(id);
+  const { data, error } = await supabase
+    .from('reports')
+    .update({ status })        // <-- only use values allowed by DB
+    .eq('id', id)
+    .select();
+  setBusyReportId(null);
+  if (error) { console.error('updateReportStatus error:', error); return; }
+  loadStats(); loadRecentReports();
+};
+
 
   const loadRecentReports = async () => {
     const { data, error } = await supabase
@@ -640,16 +655,13 @@ for (const r of rows) {
                         <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-medium">
                           {report.reason}
                         </span>
-                        <span
-                          className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            report.status === 'pending'
-                              ? 'bg-yellow-100 text-yellow-700'
-                              : report.status === 'approved'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-700'
-                          }`}
-                        >
-                          {report.status}
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusBadge(report.status)}`}>
+                          {{
+                            pending: 'pending',
+                            reviewed: 'in review',
+                            resolved: 'resolved (violation)',
+                            dismissed: 'dismissed (no violation)'
+                          }[report.status]}
                         </span>
                       </div>
                       <p className="text-sm text-gray-500 mb-1">
@@ -664,22 +676,35 @@ for (const r of rows) {
                         )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                 <div className="flex items-center gap-2">
+                    {/* Mark in review */}
+                    <button
+                      className="p-2 hover:bg-blue-50 rounded-lg transition disabled:opacity-50"
+                      onClick={() => updateReportStatus(report.id, 'reviewed')}
+                      disabled={busyReportId === report.id}
+                      title="Mark in review"
+                    >
+                      <Clock className="w-5 h-5 text-blue-600" />
+                    </button>
+
+                    {/* Dismissed (no violation) */}
+                    <button
+                      className="p-2 hover:bg-purple-50 rounded-lg transition disabled:opacity-50"
+                      onClick={() => updateReportStatus(report.id, 'dismissed')}
+                      disabled={busyReportId === report.id}
+                      title="No violation (dismiss)"
+                    >
+                      <XCircle className="w-5 h-5 text-purple-600" />
+                    </button>
+
+                    {/* Resolved (violation confirmed) */}
                     <button
                       className="p-2 hover:bg-green-50 rounded-lg transition disabled:opacity-50"
-                      onClick={() => approveReport(report.id)}
+                      onClick={() => updateReportStatus(report.id, 'resolved')}
                       disabled={busyReportId === report.id}
-                      title="Approve"
+                      title="Violation confirmed (resolve)"
                     >
                       <CheckCircle className="w-5 h-5 text-green-600" />
-                    </button>
-                    <button
-                      className="p-2 hover:bg-red-50 rounded-lg transition disabled:opacity-50"
-                      onClick={() => rejectReport(report.id)}
-                      disabled={busyReportId === report.id}
-                      title="Reject"
-                    >
-                      <XCircle className="w-5 h-5 text-red-600" />
                     </button>
                   </div>
                 </div>
@@ -804,6 +829,18 @@ for (const r of rows) {
 };
 
 /* ---------------- small UI helpers ---------------- */
+
+const statusBadge = (s: ReportStatus) => {
+  const map: Record<ReportStatus, string> = {
+    pending: 'bg-yellow-100 text-yellow-700',
+    reviewed: 'bg-blue-100 text-blue-700',     
+    resolved: 'bg-green-100 text-green-700',   
+    dismissed: 'bg-purple-100 text-purple-700'
+  };
+  return map[s] ?? 'bg-gray-100 text-gray-700';
+};
+
+
 
 function StatCard({
   icon: Icon,
