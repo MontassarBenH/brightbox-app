@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   MessageCircle, 
   Bookmark,
@@ -184,6 +184,19 @@ export default function FeedClient({   user,
   const [overlayVisibleId, setOverlayVisibleId] = useState<string | null>(null);
   const [overlayIcon, setOverlayIcon] = useState<'play' | 'pause'>('play');
   const overlayTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [initialLoad, setInitialLoad] = useState(true);
+  const [loading, setLoading] = useState({
+  videos: true,
+  posts: true,
+  messages: true
+    });
+    const loadingRef = useRef<{
+      videos: boolean;
+      posts: boolean;
+      messages: boolean;
+    }>({ videos: false, posts: false, messages: false });
+  const videoTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
 
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
 
@@ -337,15 +350,21 @@ const jumpToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 's
     }, []);
 
     useEffect(() => {
-      const onClick = (e: MouseEvent) => {
-        if (!isSearchOpen) return;
-        if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) {
-          setIsSearchOpen(false);
+  if (isSearchOpen) {
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        // Keep focus within search
+        const searchEl = searchWrapRef.current;
+        if (!searchEl?.contains(document.activeElement)) {
+          e.preventDefault();
+          searchInputRef.current?.focus();
         }
-      };
-      window.addEventListener('mousedown', onClick);
-      return () => window.removeEventListener('mousedown', onClick);
-    }, [isSearchOpen]);
+      }
+    };
+    window.addEventListener('keydown', handleTab);
+    return () => window.removeEventListener('keydown', handleTab);
+  }
+}, [isSearchOpen]);
 
 
   useEffect(() => {
@@ -484,114 +503,132 @@ const loadSaved = useCallback(async () => {
 
   // Load videos
  const loadVideos = useCallback(async () => {
-  let query = supabase
-    .from('videos')
-    .select('*')
-    .eq('status', 'ready');
+  if (loadingRef.current.videos) return;
+  loadingRef.current.videos = true;
+  setLoading(prev => ({ ...prev, videos: true }));
+  try {
+      let query = supabase
+        .from('videos')
+        .select('*')
+        .eq('status', 'ready');
 
-  if (selectedSubject !== 'all') {
-    query = query.eq('subject_id', selectedSubject);
+      if (selectedSubject !== 'all') {
+        query = query.eq('subject_id', selectedSubject);
+      }
+
+      const { data: videosData, error } = await query
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error || !videosData) return;
+
+      // profiles
+      const userIds = [...new Set(videosData.map(v => v.user_id))];
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', userIds);
+      const profilesMap = new Map((profilesData ?? []).map(p => [p.id, p]));
+
+      // comments count
+      const videoIds = videosData.map(v => v.id);
+      const { data: videoComments } = await supabase
+        .from('comments')
+        .select('video_id')
+        .in('video_id', videoIds);
+      const commentsCount = new Map<string, number>();
+      (videoComments ?? []).forEach((c: { video_id: string }) => {
+        commentsCount.set(c.video_id, (commentsCount.get(c.video_id) ?? 0) + 1);
+      });
+
+      // likes count
+      const { data: videoLikes } = await supabase
+        .from('likes')
+        .select('video_id')
+        .in('video_id', videoIds);
+      const likesCount = new Map<string, number>();
+      (videoLikes ?? []).forEach((l: { video_id: string }) => {
+        likesCount.set(l.video_id, (likesCount.get(l.video_id) ?? 0) + 1);
+      });
+
+      setVideos(
+      videosData.map(v => ({
+        ...v,
+        profiles: profilesMap.get(v.user_id) || null,
+        comments_count: commentsCount.get(v.id) ?? 0,
+        likes_count: likesCount.get(v.id) ?? 0,
+      }))
+    );
+  } catch (error) {
+    console.error('loadVideos error:', error);
+  } finally {
+    loadingRef.current.videos = false;
+    setLoading(prev => ({ ...prev, videos: false }));
+    setInitialLoad(false); 
   }
-
-  const { data: videosData, error } = await query
-    .order('created_at', { ascending: false })
-    .limit(20);
-
-  if (error || !videosData) return;
-
-  // profiles
-  const userIds = [...new Set(videosData.map(v => v.user_id))];
-  const { data: profilesData } = await supabase
-    .from('profiles')
-    .select('*')
-    .in('id', userIds);
-  const profilesMap = new Map((profilesData ?? []).map(p => [p.id, p]));
-
-  // comments count
-  const videoIds = videosData.map(v => v.id);
-  const { data: videoComments } = await supabase
-    .from('comments')
-    .select('video_id')
-    .in('video_id', videoIds);
-  const commentsCount = new Map<string, number>();
-  (videoComments ?? []).forEach((c: { video_id: string }) => {
-    commentsCount.set(c.video_id, (commentsCount.get(c.video_id) ?? 0) + 1);
-  });
-
-  // likes count
-  const { data: videoLikes } = await supabase
-    .from('likes')
-    .select('video_id')
-    .in('video_id', videoIds);
-  const likesCount = new Map<string, number>();
-  (videoLikes ?? []).forEach((l: { video_id: string }) => {
-    likesCount.set(l.video_id, (likesCount.get(l.video_id) ?? 0) + 1);
-  });
-
-  setVideos(
-    videosData.map(v => ({
-      ...v,
-      profiles: profilesMap.get(v.user_id) || null,
-      comments_count: commentsCount.get(v.id) ?? 0,
-      likes_count: likesCount.get(v.id) ?? 0,
-    }))
-  );
 }, [supabase, selectedSubject]);
+
 
 
   // Load posts
  const loadPosts = useCallback(async () => {
-  let query = supabase
-    .from('posts')
-    .select('*');
+  if (loadingRef.current.posts) return;
+  loadingRef.current.posts = true;
+  setLoading(prev => ({ ...prev, posts: true }));
 
-  if (selectedSubject !== 'all') {
-    query = query.eq('subject_id', selectedSubject);
+  try {
+    let query = supabase.from('posts').select('*');
+    if (selectedSubject !== 'all') {
+      query = query.eq('subject_id', selectedSubject);
+    }
+
+    const { data: postsData, error } = await query
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (error || !postsData) return;
+
+    const userIds = [...new Set(postsData.map(p => p.user_id))];
+    const { data: profilesData } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', userIds);
+    const profilesMap = new Map((profilesData ?? []).map(p => [p.id, p]));
+
+    const postIds = postsData.map(p => p.id);
+    const { data: postComments } = await supabase
+      .from('comments')
+      .select('post_id')
+      .in('post_id', postIds);
+    const commentsCount = new Map<string, number>();
+    (postComments ?? []).forEach((c: { post_id: string }) => {
+      commentsCount.set(c.post_id, (commentsCount.get(c.post_id) ?? 0) + 1);
+    });
+
+    const { data: postLikes } = await supabase
+      .from('likes')
+      .select('post_id')
+      .in('post_id', postIds);
+    const likesCount = new Map<string, number>();
+    (postLikes ?? []).forEach((l: { post_id: string }) => {
+      likesCount.set(l.post_id, (likesCount.get(l.post_id) ?? 0) + 1);
+    });
+
+    setPosts(
+      postsData.map(p => ({
+        ...p,
+        profiles: profilesMap.get(p.user_id) || null,
+        comments_count: commentsCount.get(p.id) ?? 0,
+        likes_count: likesCount.get(p.id) ?? 0,
+      }))
+    );
+  } catch (error) {
+    console.error('loadPosts error:', error);
+  } finally {
+    loadingRef.current.posts = false;
+    setLoading(prev => ({ ...prev, posts: false }));
+    setInitialLoad(false);
   }
-
-  const { data: postsData, error } = await query
-    .order('created_at', { ascending: false })
-    .limit(20);
-
-  if (error || !postsData) return;
-
-  // profiles
-  const userIds = [...new Set(postsData.map(p => p.user_id))];
-  const { data: profilesData } = await supabase
-    .from('profiles')
-    .select('*')
-    .in('id', userIds);
-  const profilesMap = new Map((profilesData ?? []).map(p => [p.id, p]));
-
-  // comments count
-  const postIds = postsData.map(p => p.id);
-  const { data: postComments } = await supabase
-    .from('comments')
-    .select('post_id')
-    .in('post_id', postIds);
-  const commentsCount = new Map<string, number>();
-  (postComments ?? []).forEach((c: { post_id: string }) => {
-    commentsCount.set(c.post_id, (commentsCount.get(c.post_id) ?? 0) + 1);
-  });
-
-  // likes count
-  const { data: postLikes } = await supabase
-    .from('likes')
-    .select('post_id')
-    .in('post_id', postIds);
-  const likesCount = new Map<string, number>();
-  (postLikes ?? []).forEach((l: { post_id: string }) => {
-    likesCount.set(l.post_id, (likesCount.get(l.post_id) ?? 0) + 1);
-  });
-
-  setPosts(
-    postsData.map(p => ({
-      ...p,
-      profiles: profilesMap.get(p.user_id) || null,
-      comments_count: commentsCount.get(p.id) ?? 0,
-      likes_count: likesCount.get(p.id) ?? 0,
-    }))
-  );
 }, [supabase, selectedSubject]);
 
 
@@ -613,16 +650,51 @@ const loadSaved = useCallback(async () => {
   }, [supabase, user.id]);
 
   // Combined feed (videos + posts)
-  const feedItems: FeedItem[] = [
+  const feedItems: FeedItem[] = useMemo(() => 
+  [
     ...videos.map(v => ({ ...v, type: 'video' as const })),
     ...posts.map(p => ({ ...p, type: 'post' as const })),
-  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+  [videos, posts]
+);
 
 
 const toggleLike = async (item: FeedItem) => {
   const key = `${item.type}-${item.id}`;
   const isLiked = likedItems.has(key);
 
+  // ✅ OPTIMISTIC UPDATE - Update UI immediately
+  if (isLiked) {
+    setLikedItems(prev => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    // Optimistically decrease count
+    if (item.type === 'video') {
+      setVideos(prev => prev.map(v => 
+        v.id === item.id ? { ...v, likes_count: Math.max(0, v.likes_count - 1) } : v
+      ));
+    } else {
+      setPosts(prev => prev.map(p => 
+        p.id === item.id ? { ...p, likes_count: Math.max(0, p.likes_count - 1) } : p
+      ));
+    }
+  } else {
+    setLikedItems(prev => new Set(prev).add(key));
+    // Optimistically increase count
+    if (item.type === 'video') {
+      setVideos(prev => prev.map(v => 
+        v.id === item.id ? { ...v, likes_count: v.likes_count + 1 } : v
+      ));
+    } else {
+      setPosts(prev => prev.map(p => 
+        p.id === item.id ? { ...p, likes_count: p.likes_count + 1 } : p
+      ));
+    }
+  }
+
+  // Then do the actual API call
   try {
     if (isLiked) {
       await supabase
@@ -630,12 +702,6 @@ const toggleLike = async (item: FeedItem) => {
         .delete()
         .eq('user_id', user.id)
         .eq(item.type === 'video' ? 'video_id' : 'post_id', item.id);
-
-      setLikedItems(prev => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
     } else {
       await supabase
         .from('likes')
@@ -643,17 +709,24 @@ const toggleLike = async (item: FeedItem) => {
           user_id: user.id,
           [item.type === 'video' ? 'video_id' : 'post_id']: item.id,
         });
-
-      setLikedItems(prev => new Set(prev).add(key));
     }
-
-    // Refresh counts + the "liked" state
+  } catch (e) {
+    // ✅ ROLLBACK on error
+    console.error('toggleLike error', e);
+    if (isLiked) {
+      setLikedItems(prev => new Set(prev).add(key));
+    } else {
+      setLikedItems(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+    // Refresh to get correct counts
     await Promise.all([
       item.type === 'video' ? loadVideos() : loadPosts(),
       loadLikes(),
     ]);
-  } catch (e) {
-    console.error('toggleLike error', e);
   }
 };
 
@@ -1219,7 +1292,15 @@ useEffect(() => {
           data-testid="feed-container"
           className="h-full overflow-y-auto snap-y snap-mandatory scroll-smooth scrollbar-hide"
         >
-          {feedItems.length === 0 ? (
+         {initialLoad && (loading.videos || loading.posts) ? (
+            <div className="h-screen snap-start flex items-center justify-center bg-gray-100">
+              <div className="animate-pulse space-y-4 w-full max-w-md px-8">
+                <div className="h-4 bg-gray-300 rounded w-3/4"></div>
+                <div className="h-4 bg-gray-300 rounded w-1/2"></div>
+                <div className="h-64 bg-gray-300 rounded"></div>
+              </div>
+            </div>
+          ) : feedItems.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center p-8 text-center" data-testid="empty-state">
               <VideoIcon className="w-16 h-16 text-gray-400 mb-4" />
               <p className="text-gray-500 text-lg mb-2">No content yet</p>
@@ -1309,7 +1390,7 @@ useEffect(() => {
                             if (updateTimer) {
                               clearInterval(updateTimer);
                               updateTimer = null;
-                            }
+                            }                     
                             
                             // Send final update
                             const pos = Math.floor(el.currentTime);
@@ -1339,15 +1420,20 @@ useEffect(() => {
 
                         } else {
                           // Cleanup
-                          videoRefs.current.delete(key);
-                          videoViewFired.current.delete(key);
+                          const timer = videoTimers.current.get(key);
+                            if (timer) clearInterval(timer);
+                            videoTimers.current.delete(key);
+                            videoRefs.current.delete(key);
+                            videoViewFired.current.delete(key);
                         }
                       }}
                       src={v.mux_playback_id}
                       className="max-h-full max-w-full"
                       muted
+                      controls={false}
                       playsInline
                       loop
+                      preload="metadata"
                       data-testid={`video-${v.id}`} 
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1406,24 +1492,24 @@ useEffect(() => {
                   {/* Like button */}
                   <div className="pointer-events-auto">
                     <button
-                      onClick={() => toggleLike(item)}
-                      aria-label="Like"
-                      className="flex flex-col items-center"
-                      data-testid={`like-btn-${item.id}`} 
-                    >
-                      <div className="bg-white/20 backdrop-blur-sm p-3 rounded-full hover:bg-white/30 transition">
-                        <Heart
-                          className={`w-7 h-7 ${
-                            likedItems.has(`${item.type}-${item.id}`)
-                              ? 'fill-red-500 text-red-500'
-                              : 'text-white'
-                          }`}
-                        />
-                      </div>
-                      <span className="text-white text-xs mt-1 font-semibold" data-testid={`like-count-${item.id}`}>
-                        {item.likes_count}
-                      </span>
-                    </button>
+                        onClick={() => toggleLike(item)}
+                        aria-label="Like"
+                        className="flex flex-col items-center"
+                        data-testid={`like-btn-${item.id}`}
+                      >
+                        <div className="bg-white/20 backdrop-blur-sm p-4 rounded-full hover:bg-white/30 transition min-w-[48px] min-h-[48px] flex items-center justify-center">
+                          <Heart
+                            className={`w-6 h-6 ${
+                              likedItems.has(`${item.type}-${item.id}`)
+                                ? 'fill-red-500 text-red-500'
+                                : 'text-white'
+                            }`}
+                          />
+                        </div>
+                        <span className="text-white text-xs mt-1 font-semibold">
+                          {item.likes_count}
+                        </span>
+                      </button>
                   </div>
 
                   {/* Save / Unsave (videos & posts) */}
