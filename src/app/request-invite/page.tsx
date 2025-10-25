@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
+import type { PostgrestError } from '@supabase/supabase-js'
+
 
 export default function RequestInvitePage() {
   const [email, setEmail] = useState('')
@@ -12,13 +14,21 @@ export default function RequestInvitePage() {
   const [loading, setLoading] = useState(false)
   const supabase = createClient()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
+  function getErrorMessage(err: unknown): string {
+  if (typeof err === 'string') return err
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as { message?: unknown }).message === 'string') {
+    return (err as { message: string }).message
+  }
+      return 'Failed to submit request'
+    }
 
-    try {
-      const { error: submitError } = await supabase
+      const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setError('')
+        setLoading(true)
+
+      try {
+      const { error: submitError }: { error: PostgrestError | null } = await supabase
         .from('invites')
         .insert({ email, reason, status: 'pending' })
 
@@ -26,19 +36,14 @@ export default function RequestInvitePage() {
         if (submitError.code === '23505') {
           throw new Error('This email has already requested an invite.')
         }
-        throw submitError
+        throw new Error(submitError.message || 'Failed to submit request')
       }
 
       setSuccess(true)
       setEmail('')
       setReason('')
-    } catch (err) {
-      const msg =
-        (err && typeof err === 'object' && 'message' in err && typeof (err as any).message === 'string')
-          ? (err as any).message
-          : 'Failed to submit request'
-
-      setError(msg)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err))
     } finally {
       setLoading(false)
 }
