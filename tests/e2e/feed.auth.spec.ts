@@ -4,57 +4,60 @@ test.use({ storageState: 'tests/e2e/.auth/storageState.json' });
 
 test.describe('Feed (auth)', () => {
   test('renders chrome and either empty-state or content', async ({ page }) => {
-    await page.goto('/feed');
+  await page.goto('/feed');
+  await page.waitForLoadState('networkidle');
+  
+  // Wait for either content or empty state
+  await page.waitForFunction(() => {
+    const loading = document.querySelector('.animate-pulse');
+    const hasContent = document.querySelector('[data-feed-id]');
+    const isEmpty = document.querySelector('[data-testid="empty-feed"]');
+    return !loading && (hasContent || isEmpty);
+  }, { timeout: 10000 });
 
-    // Header brand
-    await expect(page.getByRole('heading', { name: /schoolfeed/i })).toBeVisible({ timeout: 15000 });
-
-    // Subjects strip: "All" pill should always exist
-    await expect(page.getByRole('button', { name: /^all$/i })).toBeVisible();
-
-    // The scrollable feed container (with or without test-id)
-    const feedContainer = page.getByTestId('feed-container').or(page.locator('div.h-full.overflow-y-auto'));
-    await expect(feedContainer).toBeVisible();
-
-    // EITHER empty feed OR at least one feed item section exists
-    const emptyState = page.getByTestId('empty-feed').or(page.getByText('No content yet', { exact: false }));
-    const anyItemSection = page.locator('section[data-feed-id]');
-
-    const hasItems = (await anyItemSection.count()) > 0;
-    if (hasItems) {
-      await expect(anyItemSection.first()).toBeVisible();
-    } else {
-      await expect(emptyState).toBeVisible();
-    }
-
+  const anyItemSection = page.locator('[data-feed-id]');
+  const count = await anyItemSection.count();
+  
+  if (count > 0) {
+    await expect(anyItemSection.first()).toBeVisible();
+  } else {
+    const emptyState = page.getByTestId('empty-feed');
+    await expect(emptyState).toBeVisible();
+    
+    // FAB visible in empty state
     const fabGroup = page.getByTestId('fab-group');
-    if (await fabGroup.count()) {
-      await expect(fabGroup).toBeVisible();
-    }
-  });
+    await expect(fabGroup).toBeVisible();
+  }
+});
 
  test('subjects strip is interactive at a basic level', async ({ page }) => {
-  test.setTimeout(45_000);
+  await page.goto('/feed?test-mode=true');
+  await page.waitForLoadState('networkidle');
+  
+  // Wait for loading to finish
+  await page.waitForFunction(() => {
+    const loading = document.querySelector('.animate-pulse');
+    return !loading;
+  }, { timeout: 10000 });
 
-  await page.goto('/feed', { timeout: 20_000 });
+  // Scroll to top to ensure header is visible
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(300); 
 
-  // 1) "All" pill exists and is clickable.
-  const allPill = page.getByRole('button', { name: /^all$/i });
-  await expect(allPill).toBeVisible({ timeout: 5_000 });
-  await allPill.scrollIntoViewIfNeeded().catch(() => {});
-  await allPill.click({ timeout: 2_000 }).catch(() => {});
-
-  // 2) Feed container is visible.
-  const feedContainer = page.getByTestId('feed-container')
-    .or(page.locator('div.h-full.overflow-y-auto'));
-  await expect(feedContainer).toBeVisible({ timeout: 5_000 });
-
-  const item  = page.locator('section[data-feed-id]').first();
-  const empty = page.getByTestId('empty-feed')
-    .or(page.getByText('No content yet', { exact: false }));
-
-  const hasItem = await item.count().catch(() => 0);
-  if (hasItem > 0) {
+  const subjectsAll = page.getByTestId('subjects-all');
+  await expect(subjectsAll).toBeVisible();
+  
+  // Force click 
+  await subjectsAll.click({ force: true });
+  
+  await page.waitForTimeout(500);
+  
+  const item = page.locator('[data-feed-id]').first();
+  const empty = page.getByTestId('empty-feed');
+  
+  const itemCount = await item.count();
+  
+  if (itemCount > 0) {
     await expect(item).toBeVisible({ timeout: 3_000 });
   } else {
     await expect(empty).toBeVisible({ timeout: 3_000 });

@@ -33,11 +33,15 @@ export default function RequestInvitePage() {
       setEmail('')
       setReason('')
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to submit request'
-      setError(errorMessage)
+      const msg =
+        (err && typeof err === 'object' && 'message' in err && typeof (err as any).message === 'string')
+          ? (err as any).message
+          : 'Failed to submit request'
+
+      setError(msg)
     } finally {
       setLoading(false)
-    }
+}
   }
 
   return (
@@ -67,8 +71,11 @@ export default function RequestInvitePage() {
             )}
 
             <div>
-              <label className="block text-purple-200 mb-2">Email</label>
+              <label htmlFor="email" className="block text-purple-200 mb-2">
+                Email
+              </label>
               <input
+                id="email"  
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -79,8 +86,11 @@ export default function RequestInvitePage() {
             </div>
 
             <div>
-              <label className="block text-purple-200 mb-2">Why do you want to join?</label>
+              <label htmlFor="reason" className="block text-purple-200 mb-2">
+                Why do you want to join?
+              </label>
               <textarea
+                id="reason" 
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="Tell us a bit about yourself..."

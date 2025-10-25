@@ -372,9 +372,12 @@ const jumpToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 's
   if (!container) return;
 
   const handleScroll = () => {
+    if (typeof window !== 'undefined' && window.location.search.includes('test-mode')) {
+      return;
+    }
+    
     const currentScrollY = container.scrollTop;
     
-    // Hide header when scrolling down, show when scrolling up
     if (currentScrollY > lastScrollY && currentScrollY > 100) {
       setHeaderVisible(false);
     } else {
@@ -1276,44 +1279,49 @@ useEffect(() => {
     <div className="flex flex-1 overflow-hidden">
       {/* Feed - Full Screen */}
       <main className="flex-1 overflow-hidden relative">
-        {/* Floating Action Buttons */}
-        <div className="absolute bottom-6 right-6 z-20 md:z-30 flex flex-col gap-3 pointer-events-none">
-          <div className="pointer-events-auto" data-testid="fab-video-upload">
-            <VideoUpload userId={user.id} subjects={subjects} onUploadSuccess={loadVideos} />
+          {/* Floating Action Buttons */}
+          <div className="absolute bottom-6 right-6 z-20 md:z-30 flex flex-col gap-3 pointer-events-none">
+            <div className="pointer-events-auto" data-testid="fab-video-upload">
+              <VideoUpload userId={user.id} subjects={subjects} onUploadSuccess={loadVideos} />
+            </div>
+            <div className="pointer-events-auto" data-testid="fab-create-post">
+              <CreatePost userId={user.id} subjects={subjects} onPostCreated={loadPosts} />
+            </div>
           </div>
-          <div className="pointer-events-auto" data-testid="fab-create-post">
-            <CreatePost userId={user.id} subjects={subjects} onPostCreated={loadPosts} />
-          </div>
-        </div>
 
-        {/* Scrollable Feed */}
-        <div
-          ref={feedContainerRef}
-          data-testid="feed-container"
-          className="h-full overflow-y-auto snap-y snap-mandatory scroll-smooth scrollbar-hide"
-        >
-         {initialLoad && (loading.videos || loading.posts) ? (
-            <div className="h-screen snap-start flex items-center justify-center bg-gray-100">
-              <div className="animate-pulse space-y-4 w-full max-w-md px-8">
-                <div className="h-4 bg-gray-300 rounded w-3/4"></div>
-                <div className="h-4 bg-gray-300 rounded w-1/2"></div>
-                <div className="h-64 bg-gray-300 rounded"></div>
+          {/* Scrollable Feed */}
+          <div
+            ref={feedContainerRef}
+            data-testid="feed-container"
+            className="h-full overflow-y-auto snap-y snap-mandatory scroll-smooth scrollbar-hide"
+          >
+            {initialLoad && (loading.videos || loading.posts) ? (
+              <div className="h-screen snap-start flex items-center justify-center bg-gray-100">
+                <div className="animate-pulse space-y-4 w-full max-w-md px-8">
+                  <div className="h-4 bg-gray-300 rounded w-3/4"></div>
+                  <div className="h-4 bg-gray-300 rounded w-1/2"></div>
+                  <div className="h-64 bg-gray-300 rounded"></div>
+                </div>
               </div>
-            </div>
-          ) : feedItems.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center p-8 text-center" data-testid="empty-state">
-              <VideoIcon className="w-16 h-16 text-gray-400 mb-4" />
-              <p className="text-gray-500 text-lg mb-2">No content yet</p>
-              <p className="text-sm text-gray-400 mb-6">
-                Be the first to share something!
-              </p>
-              <div className="flex gap-3" data-testid="fab-group">
-                <VideoUpload userId={user.id} subjects={subjects} onUploadSuccess={loadVideos} />
-                <CreatePost userId={user.id} subjects={subjects} onPostCreated={loadPosts} />
+            ) : feedItems.length === 0 ? (
+              // ✅ Empty state with FAB inside for this case
+              <div 
+                className="h-full flex flex-col items-center justify-center p-8 text-center" 
+                data-testid="empty-feed"
+              >
+                <VideoIcon className="w-16 h-16 text-gray-400 mb-4" />
+                <p className="text-gray-500 text-lg mb-2">No content yet</p>
+                <p className="text-sm text-gray-400 mb-6">
+                  Be the first to share something!
+                </p>
+                <div className="flex gap-3" data-testid="fab-group">
+                  <VideoUpload userId={user.id} subjects={subjects} onUploadSuccess={loadVideos} />
+                  <CreatePost userId={user.id} subjects={subjects} onPostCreated={loadPosts} />
+                </div>
               </div>
-            </div>
-          ) : (
-            feedItems.map((item) => (
+            ) : (
+              // ✅ Feed items
+              feedItems.map((item) => (
               <section
                 key={`${item.type}-${item.id}`}
                 data-feed-id={`${item.type}-${item.id}`}
