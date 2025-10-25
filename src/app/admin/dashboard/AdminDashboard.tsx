@@ -642,72 +642,76 @@ const updateReportStatus = async (id: string, status: ReportStatus) => {
             <div className="space-y-4">
               {recentReports.map((report) => (
                 <div
-                  key={report.id}
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-purple-300 transition"
-                >
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                      <Flag className="w-5 h-5 text-red-600" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="font-medium text-gray-900 capitalize">{report.type}</span>
-                        <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-medium">
-                          {report.reason}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusBadge(report.status)}`}>
-                          {{
-                            pending: 'pending',
-                            reviewed: 'in review',
-                            resolved: 'resolved (violation)',
-                            dismissed: 'dismissed (no violation)'
-                          }[report.status]}
-                        </span>
+                    key={report.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-purple-300 transition"
+                  >
+                    {/* LEFT: content */}
+                    <div className="flex items-start gap-4 flex-1 min-w-0">
+                      <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
+                        <Flag className="w-5 h-5 text-red-600" />
                       </div>
-                      <p className="text-sm text-gray-500 mb-1">
-                        Reported by {report.reporter ?? 'unknown'} · About {report.reported ?? 'unknown'} ·{' '}
-                        {new Date(report.created_at).toLocaleString()}
-                      </p>
-                      {/* Show description if exists */}
-                      {report.description && (
-                          <p className="text-sm text-gray-600 italic mt-1">
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="font-medium text-gray-900 capitalize">{report.type}</span>
+                          <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-medium">
+                            {report.reason}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusBadge(report.status)}`}>
+                            {report.status.replaceAll('_', ' ')}
+                          </span>
+                        </div>
+
+                        <p className="text-sm text-gray-500 mb-1 truncate">
+                          Reported by {report.reporter ?? 'unknown'} · About {report.reported ?? 'unknown'} ·{' '}
+                          {new Date(report.created_at).toLocaleString()}
+                        </p>
+
+                        {report.description && (
+                          <p className="text-sm text-gray-600 italic mt-1 line-clamp-2 sm:line-clamp-none">
                             <q>{report.description}</q>
                           </p>
                         )}
+                      </div>
+                    </div>
+
+                    {/* RIGHT: actions */}
+                    <div className="mt-3 sm:mt-0 sm:ml-4 w-full sm:w-auto flex flex-wrap sm:flex-nowrap justify-end gap-2">
+                      {/* In review */}
+                      <button
+                        className="p-2 hover:bg-blue-50 rounded-lg transition disabled:opacity-50"
+                        onClick={() => updateReportStatus(report.id, 'reviewed')}
+                        disabled={busyReportId === report.id}
+                        title="Mark in review"
+                        aria-label="Mark in review"
+                      >
+                        <Clock className="w-5 h-5 text-blue-600" />
+                      </button>
+
+                      {/* Dismiss */}
+                      <button
+                        className="p-2 hover:bg-purple-50 rounded-lg transition disabled:opacity-50"
+                        onClick={() => updateReportStatus(report.id, 'dismissed')}
+                        disabled={busyReportId === report.id}
+                        title="Dismiss"
+                        aria-label="Dismiss"
+                      >
+                        <XCircle className="w-5 h-5 text-purple-600" />
+                      </button>
+
+                      {/* Resolve */}
+                      <button
+                        className="p-2 hover:bg-green-50 rounded-lg transition disabled:opacity-50"
+                        onClick={() => updateReportStatus(report.id, 'resolved')}
+                        disabled={busyReportId === report.id}
+                        title="Resolve"
+                        aria-label="Resolve"
+                      >
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                      </button>
                     </div>
                   </div>
-                 <div className="flex items-center gap-2">
-                    {/* Mark in review */}
-                    <button
-                      className="p-2 hover:bg-blue-50 rounded-lg transition disabled:opacity-50"
-                      onClick={() => updateReportStatus(report.id, 'reviewed')}
-                      disabled={busyReportId === report.id}
-                      title="Mark in review"
-                    >
-                      <Clock className="w-5 h-5 text-blue-600" />
-                    </button>
 
-                    {/* Dismissed (no violation) */}
-                    <button
-                      className="p-2 hover:bg-purple-50 rounded-lg transition disabled:opacity-50"
-                      onClick={() => updateReportStatus(report.id, 'dismissed')}
-                      disabled={busyReportId === report.id}
-                      title="No violation (dismiss)"
-                    >
-                      <XCircle className="w-5 h-5 text-purple-600" />
-                    </button>
-
-                    {/* Resolved (violation confirmed) */}
-                    <button
-                      className="p-2 hover:bg-green-50 rounded-lg transition disabled:opacity-50"
-                      onClick={() => updateReportStatus(report.id, 'resolved')}
-                      disabled={busyReportId === report.id}
-                      title="Violation confirmed (resolve)"
-                    >
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                    </button>
-                  </div>
-                </div>
               ))}
             </div>
           )}
@@ -767,14 +771,19 @@ const updateReportStatus = async (id: string, status: ReportStatus) => {
                       {list.map((invite) => (
                         <div
                           key={invite.email}
-                          className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition"
+                          className="flex flex-col sm:flex-row sm:items-center p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition overflow-hidden"
                         >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-medium text-gray-900">{invite.email}</span>
+                          {/* LEFT: details */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <span className="font-medium text-gray-900 break-words max-w-full">
+                                {invite.email}
+                              </span>
+
                               <span
                                 className={[
                                   'px-2 py-0.5 rounded text-xs font-medium',
+                                  'mt-1 sm:mt-0',
                                   inviteFilter === 'pending'
                                     ? 'bg-yellow-100 text-yellow-700'
                                     : 'bg-gray-100 text-gray-700'
@@ -783,18 +792,20 @@ const updateReportStatus = async (id: string, status: ReportStatus) => {
                                 {inviteFilter}
                               </span>
                             </div>
+
                             <p className="text-sm text-gray-500 mb-1">
                               {new Date(invite.created_at).toLocaleString()}
                             </p>
+
                             {invite.reason && (
-                              <p className="text-sm text-gray-600 italic">
+                              <p className="text-sm text-gray-600 italic line-clamp-2 sm:line-clamp-none">
                                 <q>{invite.reason}</q>
                               </p>
                             )}
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            {/* Approve always available so you can restore rejected later */}
+                          {/* RIGHT: actions */}
+                          <div className="mt-3 sm:mt-0 sm:ml-4 w-full sm:w-auto flex flex-wrap justify-end gap-2 shrink-0">
                             <button
                               className="p-2 hover:bg-green-50 rounded-lg transition disabled:opacity-50"
                               onClick={() => approveInvite(invite.email)}
@@ -804,7 +815,6 @@ const updateReportStatus = async (id: string, status: ReportStatus) => {
                               <CheckCircle className="w-5 h-5 text-green-600" />
                             </button>
 
-                            {/* Only show Reject when viewing pending */}
                             {inviteFilter === 'pending' && (
                               <button
                                 className="p-2 hover:bg-red-50 rounded-lg transition disabled:opacity-50"
@@ -817,6 +827,7 @@ const updateReportStatus = async (id: string, status: ReportStatus) => {
                             )}
                           </div>
                         </div>
+
                       ))}
                     </div>
                   );
