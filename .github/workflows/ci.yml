@@ -32,6 +32,12 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Build (verify production build)
+        run: npm run build
+
       - name: Run unit tests (Vitest)
         run: npm run test --silent
 

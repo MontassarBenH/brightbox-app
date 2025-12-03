@@ -1,7 +1,7 @@
 import React from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import FeedClient from './FeedClient'
 import type { User } from '@supabase/supabase-js'
 
@@ -33,11 +33,17 @@ vi.mock('@/lib/analytics', () => ({
 }))
 
 // Mock roles
+// Mock roles
 vi.mock('@/lib/roles', () => ({
-  getUserRole: vi.fn().mockResolvedValue('viewer'),
-  canPost: vi.fn((role) => role === 'admin' || role === 'contributor'),
+  getUserRole: vi.fn(),
+  canPost: vi.fn(),
 }));
-import { getUserRole } from '@/lib/roles';
+import { getUserRole, canPost } from '@/lib/roles';
+
+beforeEach(() => {
+  vi.mocked(getUserRole).mockResolvedValue('viewer');
+  vi.mocked(canPost).mockImplementation((role) => role === 'admin' || role === 'contributor');
+});
 
 // 4) Supabase client mock
 vi.mock('@/lib/supabase/client', () => {
