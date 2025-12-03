@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { createClient } from '@/lib/supabase/client';
+import { getUserRole, canPost as canUserPost } from '@/lib/roles';
 
 type Subject = { id: string; name: string; color: string; icon: string };
 
@@ -62,17 +63,23 @@ export function VideoUpload({ userId, subjects, onUploadSuccess }: VideoUploadPr
     setProgress(10);
 
     try {
+      // Defense-in-depth: Check role again
+      const role = await getUserRole(supabase, userId);
+      if (!canUserPost(role)) {
+        throw new Error('Unauthorized: You do not have permission to upload videos.');
+      }
+
       const ext = file.name.includes('.') ? file.name.split('.').pop() : 'mp4';
       const fileName = `${userId}/${Date.now()}.${ext}`;
       setProgress(30);
 
       // Upload to Supabase Storage with a long cache TTL
-       const { error: uploadError } = await supabase.storage
-      .from('videos')
-      .upload(fileName, file, {
-        cacheControl: '31536000', // seconds
-        upsert: false,
-      });
+      const { error: uploadError } = await supabase.storage
+        .from('videos')
+        .upload(fileName, file, {
+          cacheControl: '31536000', // seconds
+          upsert: false,
+        });
 
       if (uploadError) {
         throw uploadError;

@@ -25,7 +25,7 @@ type OnlineUser = {
   id: string;
   name: string;
   email: string;
-  duration: number; 
+  duration: number;
 };
 
 type TopVideo = {
@@ -33,7 +33,7 @@ type TopVideo = {
   title: string;
   views: number;
   avgWatchTime: number;
-  completion: number;  
+  completion: number;
 };
 
 type ReportStatus = 'pending' | 'reviewed' | 'resolved' | 'dismissed';
@@ -65,7 +65,7 @@ const AdminDashboard = () => {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace('/login');
-};
+  };
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -103,14 +103,14 @@ const AdminDashboard = () => {
 
 
   // ---------- helpers ----------
-const formatDuration = (seconds: number) => {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-};
+  const formatDuration = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  };
 
 
   // Admin check via admin_users
@@ -142,7 +142,7 @@ const formatDuration = (seconds: number) => {
         supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
       ]);
 
-      
+
 
     const { data: activeSessions } = await supabase
       .from('user_sessions')
@@ -164,69 +164,69 @@ const formatDuration = (seconds: number) => {
   };
 
   const loadPendingInvites = async () => {
-        const { data, error } = await supabase
-          .from('invites')
-          .select('email, reason, status, created_at')
-          .eq('status', 'pending')
-          .order('created_at', { ascending: false })
-          .limit(100);
+    const { data, error } = await supabase
+      .from('invites')
+      .select('email, reason, status, created_at')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(100);
 
-        if (error) {
-          console.error('loadPendingInvites error:', error);
-          setPendingInvites([]);
-          return;
-        }
-        setPendingInvites(data ?? []);
-      };
+    if (error) {
+      console.error('loadPendingInvites error:', error);
+      setPendingInvites([]);
+      return;
+    }
+    setPendingInvites(data ?? []);
+  };
 
-      const loadRejectedInvites = async () => {
-        const { data, error } = await supabase
-          .from('invites')
-          .select('email, reason, status, created_at')
-          .eq('status', 'rejected')
-          .order('created_at', { ascending: false })
-          .limit(100);
+  const loadRejectedInvites = async () => {
+    const { data, error } = await supabase
+      .from('invites')
+      .select('email, reason, status, created_at')
+      .eq('status', 'rejected')
+      .order('created_at', { ascending: false })
+      .limit(100);
 
-        if (error) {
-          console.error('loadRejectedInvites error:', error);
-          setRejectedInvites([]);
-          return;
-        }
-        setRejectedInvites(data ?? []);
-      };
+    if (error) {
+      console.error('loadRejectedInvites error:', error);
+      setRejectedInvites([]);
+      return;
+    }
+    setRejectedInvites(data ?? []);
+  };
 
 
-      const approveInvite = async (email: string) => {
-        setBusyInviteEmail(email);
-        const { error } = await supabase
-          .from('invites')
-          .update({ status: 'approved' })
-          .eq('email', email);
+  const approveInvite = async (email: string) => {
+    setBusyInviteEmail(email);
+    const { error } = await supabase
+      .from('invites')
+      .update({ status: 'approved' })
+      .eq('email', email);
 
-        setBusyInviteEmail(null);
-        if (error) {
-          console.error('approveInvite error:', error);
-          return;
-        }
-        setPendingInvites(prev => prev.filter(i => i.email !== email));
-        setRejectedInvites(prev => prev.filter(i => i.email !== email));
-      };
+    setBusyInviteEmail(null);
+    if (error) {
+      console.error('approveInvite error:', error);
+      return;
+    }
+    setPendingInvites(prev => prev.filter(i => i.email !== email));
+    setRejectedInvites(prev => prev.filter(i => i.email !== email));
+  };
 
-      const rejectInvite = async (email: string) => {
-        setBusyInviteEmail(email);
-        const { error } = await supabase
-          .from('invites')
-          .update({ status: 'rejected' })
-          .eq('email', email);
+  const rejectInvite = async (email: string) => {
+    setBusyInviteEmail(email);
+    const { error } = await supabase
+      .from('invites')
+      .update({ status: 'rejected' })
+      .eq('email', email);
 
-        setBusyInviteEmail(null);
-        if (error) {
-          console.error('rejectInvite error:', error);
-          return;
-        }
-          setPendingInvites(prev => prev.filter(i => i.email !== email));
-          setRejectedInvites(prev => [{ ...prev.find(p => p.email === email)!, status: 'rejected' }, ...prev]);
-      };
+    setBusyInviteEmail(null);
+    if (error) {
+      console.error('rejectInvite error:', error);
+      return;
+    }
+    setPendingInvites(prev => prev.filter(i => i.email !== email));
+    setRejectedInvites(prev => [{ ...prev.find(p => p.email === email)!, status: 'rejected' }, ...prev]);
+  };
 
   const loadOnlineUsers = async () => {
     const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -269,101 +269,101 @@ const formatDuration = (seconds: number) => {
     setOnlineUsers(Array.from(uniq.values()));
   };
 
- const loadTopVideos = async () => {
-  const { data: va, error } = await supabase
-  .from('video_analytics')
-  .select('video_id, user_id, watch_duration_seconds, completed, updated_at')
-  .order('watch_duration_seconds', { ascending: false });
+  const loadTopVideos = async () => {
+    const { data: va, error } = await supabase
+      .from('video_analytics')
+      .select('video_id, user_id, watch_duration_seconds, completed, updated_at')
+      .order('watch_duration_seconds', { ascending: false });
 
-if (error) {
-  console.error('video_analytics query error:', error);
-  setTopVideos([]);
-  return;
-}
+    if (error) {
+      console.error('video_analytics query error:', error);
+      setTopVideos([]);
+      return;
+    }
 
-let rows = va ?? [];
-if (rows.length === 0) {
-  const fallback = await supabase
-    .from('video_analytics')
-    .select('video_id, user_id, watch_duration_seconds, completed, updated_at')
-    .order('updated_at', { ascending: false })
-    .limit(500);
-  rows = fallback.data ?? [];
-}
+    let rows = va ?? [];
+    if (rows.length === 0) {
+      const fallback = await supabase
+        .from('video_analytics')
+        .select('video_id, user_id, watch_duration_seconds, completed, updated_at')
+        .order('updated_at', { ascending: false })
+        .limit(500);
+      rows = fallback.data ?? [];
+    }
 
-if (rows.length === 0) {
-  setTopVideos([]);
-  return;
-}
+    if (rows.length === 0) {
+      setTopVideos([]);
+      return;
+    }
 
-  // Aggregate per video
-  const agg = new Map<
-  string,
-  { viewers: Set<string>; totalWatch: number; completedCount: number; totalRows: number }
->();
+    // Aggregate per video
+    const agg = new Map<
+      string,
+      { viewers: Set<string>; totalWatch: number; completedCount: number; totalRows: number }
+    >();
 
-for (const r of rows) {
-  const vid = r.video_id as string;
-  const entry =
-    agg.get(vid) ?? { viewers: new Set<string>(), totalWatch: 0, completedCount: 0, totalRows: 0 };
+    for (const r of rows) {
+      const vid = r.video_id as string;
+      const entry =
+        agg.get(vid) ?? { viewers: new Set<string>(), totalWatch: 0, completedCount: 0, totalRows: 0 };
 
-  // accumulate
-  entry.totalRows += 1;
-  if (r.user_id) entry.viewers.add(r.user_id as string);
-  entry.totalWatch += Math.max(0, Number(r.watch_duration_seconds ?? 0));
-  if (r.completed === true) entry.completedCount += 1;
+      // accumulate
+      entry.totalRows += 1;
+      if (r.user_id) entry.viewers.add(r.user_id as string);
+      entry.totalWatch += Math.max(0, Number(r.watch_duration_seconds ?? 0));
+      if (r.completed === true) entry.completedCount += 1;
 
-  agg.set(vid, entry);
-}
-  const videoIds = Array.from(agg.keys());
-  if (videoIds.length === 0) {
-    setTopVideos([]);
-    return;
-  }
+      agg.set(vid, entry);
+    }
+    const videoIds = Array.from(agg.keys());
+    if (videoIds.length === 0) {
+      setTopVideos([]);
+      return;
+    }
 
-  // Titles
-  const { data: vids } = await supabase
-    .from('videos')
-    .select('id, title')
-    .in('id', videoIds);
+    // Titles
+    const { data: vids } = await supabase
+      .from('videos')
+      .select('id, title')
+      .in('id', videoIds);
 
-  const titleMap = new Map((vids ?? []).map(v => [v.id, v.title || 'Untitled']));
+    const titleMap = new Map((vids ?? []).map(v => [v.id, v.title || 'Untitled']));
 
-  const list: TopVideo[] = videoIds.map(id => {
-  const a = agg.get(id)!;
+    const list: TopVideo[] = videoIds.map(id => {
+      const a = agg.get(id)!;
 
-  const views = a.viewers.size > 0 ? a.viewers.size : a.totalRows;
+      const views = a.viewers.size > 0 ? a.viewers.size : a.totalRows;
 
-  const avgWatchTime = views > 0 ? Math.round(a.totalWatch / views) : 0;
+      const avgWatchTime = views > 0 ? Math.round(a.totalWatch / views) : 0;
 
-  const completionNum =
-    views > 0 ? Math.round((a.completedCount / views) * 100) : 0;
+      const completionNum =
+        views > 0 ? Math.round((a.completedCount / views) * 100) : 0;
 
-  return {
-    id,
-    title: titleMap.get(id) ?? 'Untitled',
-    views,
-    avgWatchTime,
-    completion: Number.isFinite(completionNum) ? completionNum : 0,
+      return {
+        id,
+        title: titleMap.get(id) ?? 'Untitled',
+        views,
+        avgWatchTime,
+        completion: Number.isFinite(completionNum) ? completionNum : 0,
+      };
+    });
+
+
+    list.sort((x, y) => y.views - x.views);
+    setTopVideos(list.slice(0, 10));
   };
-});
 
-
-  list.sort((x, y) => y.views - x.views);
-  setTopVideos(list.slice(0, 10));
-};
-
-const updateReportStatus = async (id: string, status: ReportStatus) => {
-  setBusyReportId(id);
-  const { data, error } = await supabase
-    .from('reports')
-    .update({ status })        // <-- only use values allowed by DB
-    .eq('id', id)
-    .select();
-  setBusyReportId(null);
-  if (error) { console.error('updateReportStatus error:', error); return; }
-  loadStats(); loadRecentReports();
-};
+  const updateReportStatus = async (id: string, status: ReportStatus) => {
+    setBusyReportId(id);
+    const { error } = await supabase
+      .from('reports')
+      .update({ status })        // <-- only use values allowed by DB
+      .eq('id', id)
+      .select();
+    setBusyReportId(null);
+    if (error) { console.error('updateReportStatus error:', error); return; }
+    loadStats(); loadRecentReports();
+  };
 
 
   const loadRecentReports = async () => {
@@ -375,13 +375,13 @@ const updateReportStatus = async (id: string, status: ReportStatus) => {
 
     console.log('Reports query result:', { data, error });
 
-     if (error) {
-    console.error('Reports query error:', error);
-    setRecentReports([]);
-    return;
-  }
+    if (error) {
+      console.error('Reports query error:', error);
+      setRecentReports([]);
+      return;
+    }
 
-    if (!data  || data.length === 0) {
+    if (!data || data.length === 0) {
       setRecentReports([]);
       return;
     }
@@ -414,7 +414,7 @@ const updateReportStatus = async (id: string, status: ReportStatus) => {
     setRecentReports(rows);
   };
 
-  const approveReport = async (id: string) => {
+  const _approveReport = async (id: string) => {
     setBusyReportId(id);
     await supabase.from('reports').update({ status: 'approved' }).eq('id', id);
     setBusyReportId(null);
@@ -422,7 +422,7 @@ const updateReportStatus = async (id: string, status: ReportStatus) => {
     loadRecentReports();
   };
 
-  const rejectReport = async (id: string) => {
+  const _rejectReport = async (id: string) => {
     setBusyReportId(id);
     await supabase.from('reports').update({ status: 'rejected' }).eq('id', id);
     setBusyReportId(null);
@@ -642,199 +642,199 @@ const updateReportStatus = async (id: string, status: ReportStatus) => {
             <div className="space-y-4">
               {recentReports.map((report) => (
                 <div
-                    key={report.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-purple-300 transition"
-                  >
-                    {/* LEFT: content */}
-                    <div className="flex items-start gap-4 flex-1 min-w-0">
-                      <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
-                        <Flag className="w-5 h-5 text-red-600" />
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className="font-medium text-gray-900 capitalize">{report.type}</span>
-                          <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-medium">
-                            {report.reason}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusBadge(report.status)}`}>
-                            {report.status.replaceAll('_', ' ')}
-                          </span>
-                        </div>
-
-                        <p className="text-sm text-gray-500 mb-1 truncate">
-                          Reported by {report.reporter ?? 'unknown'} · About {report.reported ?? 'unknown'} ·{' '}
-                          {new Date(report.created_at).toLocaleString()}
-                        </p>
-
-                        {report.description && (
-                          <p className="text-sm text-gray-600 italic mt-1 line-clamp-2 sm:line-clamp-none">
-                            <q>{report.description}</q>
-                          </p>
-                        )}
-                      </div>
+                  key={report.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-purple-300 transition"
+                >
+                  {/* LEFT: content */}
+                  <div className="flex items-start gap-4 flex-1 min-w-0">
+                    <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
+                      <Flag className="w-5 h-5 text-red-600" />
                     </div>
 
-                    {/* RIGHT: actions */}
-                    <div className="mt-3 sm:mt-0 sm:ml-4 w-full sm:w-auto flex flex-wrap sm:flex-nowrap justify-end gap-2">
-                      {/* In review */}
-                      <button
-                        className="p-2 hover:bg-blue-50 rounded-lg transition disabled:opacity-50"
-                        onClick={() => updateReportStatus(report.id, 'reviewed')}
-                        disabled={busyReportId === report.id}
-                        title="Mark in review"
-                        aria-label="Mark in review"
-                      >
-                        <Clock className="w-5 h-5 text-blue-600" />
-                      </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="font-medium text-gray-900 capitalize">{report.type}</span>
+                        <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-medium">
+                          {report.reason}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusBadge(report.status)}`}>
+                          {report.status.replaceAll('_', ' ')}
+                        </span>
+                      </div>
 
-                      {/* Dismiss */}
-                      <button
-                        className="p-2 hover:bg-purple-50 rounded-lg transition disabled:opacity-50"
-                        onClick={() => updateReportStatus(report.id, 'dismissed')}
-                        disabled={busyReportId === report.id}
-                        title="Dismiss"
-                        aria-label="Dismiss"
-                      >
-                        <XCircle className="w-5 h-5 text-purple-600" />
-                      </button>
+                      <p className="text-sm text-gray-500 mb-1 truncate">
+                        Reported by {report.reporter ?? 'unknown'} · About {report.reported ?? 'unknown'} ·{' '}
+                        {new Date(report.created_at).toLocaleString()}
+                      </p>
 
-                      {/* Resolve */}
-                      <button
-                        className="p-2 hover:bg-green-50 rounded-lg transition disabled:opacity-50"
-                        onClick={() => updateReportStatus(report.id, 'resolved')}
-                        disabled={busyReportId === report.id}
-                        title="Resolve"
-                        aria-label="Resolve"
-                      >
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                      </button>
+                      {report.description && (
+                        <p className="text-sm text-gray-600 italic mt-1 line-clamp-2 sm:line-clamp-none">
+                          <q>{report.description}</q>
+                        </p>
+                      )}
                     </div>
                   </div>
+
+                  {/* RIGHT: actions */}
+                  <div className="mt-3 sm:mt-0 sm:ml-4 w-full sm:w-auto flex flex-wrap sm:flex-nowrap justify-end gap-2">
+                    {/* In review */}
+                    <button
+                      className="p-2 hover:bg-blue-50 rounded-lg transition disabled:opacity-50"
+                      onClick={() => updateReportStatus(report.id, 'reviewed')}
+                      disabled={busyReportId === report.id}
+                      title="Mark in review"
+                      aria-label="Mark in review"
+                    >
+                      <Clock className="w-5 h-5 text-blue-600" />
+                    </button>
+
+                    {/* Dismiss */}
+                    <button
+                      className="p-2 hover:bg-purple-50 rounded-lg transition disabled:opacity-50"
+                      onClick={() => updateReportStatus(report.id, 'dismissed')}
+                      disabled={busyReportId === report.id}
+                      title="Dismiss"
+                      aria-label="Dismiss"
+                    >
+                      <XCircle className="w-5 h-5 text-purple-600" />
+                    </button>
+
+                    {/* Resolve */}
+                    <button
+                      className="p-2 hover:bg-green-50 rounded-lg transition disabled:opacity-50"
+                      onClick={() => updateReportStatus(report.id, 'resolved')}
+                      disabled={busyReportId === report.id}
+                      title="Resolve"
+                      aria-label="Resolve"
+                    >
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                    </button>
+                  </div>
+                </div>
 
               ))}
             </div>
           )}
         </div>
-           {/* Invites */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8 mt-8">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900">Invites</h2>
+        {/* Invites */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8 mt-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold text-gray-900">Invites</h2>
 
-                  {/* tiny segmented control */}
-                  <div className="inline-flex items-center rounded-lg border border-gray-200 p-1">
-                    <button
-                      onClick={() => setInviteFilter('pending')}
-                      className={[
-                        'px-3 py-1.5 rounded-md text-sm font-medium transition',
-                        inviteFilter === 'pending'
-                          ? 'bg-gray-900 text-white'
-                          : 'text-gray-700 hover:bg-gray-50'
-                      ].join(' ')}
-                    >
-                      Pending
-                      <span className="ml-2 rounded-full bg-gray-100 text-gray-700 text-[11px] px-1.5 py-0.5">
-                        {pendingInvites.length}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => setInviteFilter('rejected')}
-                      className={[
-                        'ml-1 px-3 py-1.5 rounded-md text-sm font-medium transition',
-                        inviteFilter === 'rejected'
-                          ? 'bg-gray-900 text-white'
-                          : 'text-gray-700 hover:bg-gray-50'
-                      ].join(' ')}
-                    >
-                      Rejected
-                      <span className="ml-2 rounded-full bg-gray-100 text-gray-700 text-[11px] px-1.5 py-0.5">
-                        {rejectedInvites.length}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* list */}
-                {(() => {
-                  const list = inviteFilter === 'pending' ? pendingInvites : rejectedInvites;
-
-                  if (list.length === 0) {
-                    return (
-                      <p className="text-sm text-gray-500">
-                        {inviteFilter === 'pending' ? 'No invite requests.' : 'No rejected invites.'}
-                      </p>
-                    );
-                  }
-
-                  return (
-                    <div className="space-y-4">
-                      {list.map((invite) => (
-                        <div
-                          key={invite.email}
-                          className="flex flex-col sm:flex-row sm:items-center p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition overflow-hidden"
-                        >
-                          {/* LEFT: details */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <span className="font-medium text-gray-900 break-words max-w-full">
-                                {invite.email}
-                              </span>
-
-                              <span
-                                className={[
-                                  'px-2 py-0.5 rounded text-xs font-medium',
-                                  'mt-1 sm:mt-0',
-                                  inviteFilter === 'pending'
-                                    ? 'bg-yellow-100 text-yellow-700'
-                                    : 'bg-gray-100 text-gray-700'
-                                ].join(' ')}
-                              >
-                                {inviteFilter}
-                              </span>
-                            </div>
-
-                            <p className="text-sm text-gray-500 mb-1">
-                              {new Date(invite.created_at).toLocaleString()}
-                            </p>
-
-                            {invite.reason && (
-                              <p className="text-sm text-gray-600 italic line-clamp-2 sm:line-clamp-none">
-                                <q>{invite.reason}</q>
-                              </p>
-                            )}
-                          </div>
-
-                          {/* RIGHT: actions */}
-                          <div className="mt-3 sm:mt-0 sm:ml-4 w-full sm:w-auto flex flex-wrap justify-end gap-2 shrink-0">
-                            <button
-                              className="p-2 hover:bg-green-50 rounded-lg transition disabled:opacity-50"
-                              onClick={() => approveInvite(invite.email)}
-                              disabled={busyInviteEmail === invite.email}
-                              title="Approve"
-                            >
-                              <CheckCircle className="w-5 h-5 text-green-600" />
-                            </button>
-
-                            {inviteFilter === 'pending' && (
-                              <button
-                                className="p-2 hover:bg-red-50 rounded-lg transition disabled:opacity-50"
-                                onClick={() => rejectInvite(invite.email)}
-                                disabled={busyInviteEmail === invite.email}
-                                title="Reject"
-                              >
-                                <XCircle className="w-5 h-5 text-red-600" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                      ))}
-                    </div>
-                  );
-                })()}
-              </div>
-
+            {/* tiny segmented control */}
+            <div className="inline-flex items-center rounded-lg border border-gray-200 p-1">
+              <button
+                onClick={() => setInviteFilter('pending')}
+                className={[
+                  'px-3 py-1.5 rounded-md text-sm font-medium transition',
+                  inviteFilter === 'pending'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-700 hover:bg-gray-50'
+                ].join(' ')}
+              >
+                Pending
+                <span className="ml-2 rounded-full bg-gray-100 text-gray-700 text-[11px] px-1.5 py-0.5">
+                  {pendingInvites.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setInviteFilter('rejected')}
+                className={[
+                  'ml-1 px-3 py-1.5 rounded-md text-sm font-medium transition',
+                  inviteFilter === 'rejected'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-700 hover:bg-gray-50'
+                ].join(' ')}
+              >
+                Rejected
+                <span className="ml-2 rounded-full bg-gray-100 text-gray-700 text-[11px] px-1.5 py-0.5">
+                  {rejectedInvites.length}
+                </span>
+              </button>
+            </div>
           </div>
+
+          {/* list */}
+          {(() => {
+            const list = inviteFilter === 'pending' ? pendingInvites : rejectedInvites;
+
+            if (list.length === 0) {
+              return (
+                <p className="text-sm text-gray-500">
+                  {inviteFilter === 'pending' ? 'No invite requests.' : 'No rejected invites.'}
+                </p>
+              );
+            }
+
+            return (
+              <div className="space-y-4">
+                {list.map((invite) => (
+                  <div
+                    key={invite.email}
+                    className="flex flex-col sm:flex-row sm:items-center p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition overflow-hidden"
+                  >
+                    {/* LEFT: details */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="font-medium text-gray-900 break-words max-w-full">
+                          {invite.email}
+                        </span>
+
+                        <span
+                          className={[
+                            'px-2 py-0.5 rounded text-xs font-medium',
+                            'mt-1 sm:mt-0',
+                            inviteFilter === 'pending'
+                              ? 'bg-yellow-100 text-yellow-700'
+                              : 'bg-gray-100 text-gray-700'
+                          ].join(' ')}
+                        >
+                          {inviteFilter}
+                        </span>
+                      </div>
+
+                      <p className="text-sm text-gray-500 mb-1">
+                        {new Date(invite.created_at).toLocaleString()}
+                      </p>
+
+                      {invite.reason && (
+                        <p className="text-sm text-gray-600 italic line-clamp-2 sm:line-clamp-none">
+                          <q>{invite.reason}</q>
+                        </p>
+                      )}
+                    </div>
+
+                    {/* RIGHT: actions */}
+                    <div className="mt-3 sm:mt-0 sm:ml-4 w-full sm:w-auto flex flex-wrap justify-end gap-2 shrink-0">
+                      <button
+                        className="p-2 hover:bg-green-50 rounded-lg transition disabled:opacity-50"
+                        onClick={() => approveInvite(invite.email)}
+                        disabled={busyInviteEmail === invite.email}
+                        title="Approve"
+                      >
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                      </button>
+
+                      {inviteFilter === 'pending' && (
+                        <button
+                          className="p-2 hover:bg-red-50 rounded-lg transition disabled:opacity-50"
+                          onClick={() => rejectInvite(invite.email)}
+                          disabled={busyInviteEmail === invite.email}
+                          title="Reject"
+                        >
+                          <XCircle className="w-5 h-5 text-red-600" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+
+      </div>
     </div>
   );
 };
@@ -844,8 +844,8 @@ const updateReportStatus = async (id: string, status: ReportStatus) => {
 const statusBadge = (s: ReportStatus) => {
   const map: Record<ReportStatus, string> = {
     pending: 'bg-yellow-100 text-yellow-700',
-    reviewed: 'bg-blue-100 text-blue-700',     
-    resolved: 'bg-green-100 text-green-700',   
+    reviewed: 'bg-blue-100 text-blue-700',
+    resolved: 'bg-green-100 text-green-700',
     dismissed: 'bg-purple-100 text-purple-700'
   };
   return map[s] ?? 'bg-gray-100 text-gray-700';

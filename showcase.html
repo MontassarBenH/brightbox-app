@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BrightBox - Project Showcase</title>
+    <style>
+        :root {
+            --primary: #6d28d9;
+            --primary-dark: #4c1d95;
+            --secondary: #ede9fe;
+            --text: #1f2937;
+            --bg: #f9fafb;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            background: var(--bg);
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+            color: white;
+            padding: 4rem 2rem;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+            font-weight: 800;
+            letter-spacing: -0.025em;
+        }
+
+        .subtitle {
+            font-size: 1.5rem;
+            opacity: 0.9;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        main {
+            max-width: 1000px;
+            margin: -3rem auto 4rem;
+            padding: 0 2rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            padding: 3rem;
+            margin-bottom: 3rem;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            background: #000;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+            margin-bottom: 3rem;
+        }
+
+        video {
+            width: 100%;
+            display: block;
+        }
+
+        h2 {
+            color: var(--primary-dark);
+            font-size: 2rem;
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature {
+            padding: 1.5rem;
+            background: var(--secondary);
+            border-radius: 0.75rem;
+        }
+
+        .feature h3 {
+            color: var(--primary-dark);
+            margin-top: 0;
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: #6b7280;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .comparison-table th,
+        .comparison-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .comparison-table th {
+            background-color: var(--secondary);
+            color: var(--primary-dark);
+            font-weight: 700;
+        }
+
+        .comparison-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .highlight {
+            color: var(--primary);
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>BrightBox</h1>
+        <p class="subtitle">A focused, role-based social platform for schools and organizations.</p>
+    </header>
+
+    <main>
+        <div class="video-container">
+            <video controls>
+                <source src="assets/Presenation.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+
+        <div class="card">
+            <h2>The Core Idea</h2>
+            <p>BrightBox is designed around a simple but powerful concept: <strong>Role-Based Content Delivery</strong>.
+                Unlike traditional social networks where everyone shouts into the void, BrightBox creates a structured
+                environment where content flows from <strong>Producers</strong> to <strong>Consumers</strong>.</p>
+            <br>
+            <div class="grid">
+                <div class="feature">
+                    <h3>For Schools</h3>
+                    <p><strong>Producers:</strong> Teachers, Administrators, and Top Students.<br>
+                        <strong>Consumers:</strong> Students.<br>
+                        <strong>Goal:</strong> Share educational materials, announcements, and explanations without
+                        distractions.
+                    </p>
+                </div>
+                <div class="feature">
+                    <h3>For Companies</h3>
+                    <p><strong>Producers:</strong> CEO, HR, Marketing Team.<br>
+                        <strong>Consumers:</strong> Employees.<br>
+                        <strong>Goal:</strong> Disseminate company news, policies, and updates efficiently.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>The Problem & Solution</h2>
+            <div class="grid">
+                <div>
+                    <h3>🚫 The Problem</h3>
+                    <p><strong>Noise & Distraction:</strong> On standard platforms, critical information gets lost in a
+                        sea of irrelevant posts.</p>
+                    <p><strong>Lack of Authority:</strong> It's hard to distinguish between official announcements and
+                        chatter.</p>
+                    <p><strong>Privacy Concerns:</strong> Public feeds expose sensitive internal communications.</p>
+                </div>
+                <div>
+                    <h3>✅ The BrightBox Solution</h3>
+                    <p><strong>Focused Feed:</strong> Users only see content from authorized sources (Producers).</p>
+                    <p><strong>Clear Hierarchy:</strong> Roles are strictly enforced. Admins post; Viewers consume.</p>
+                    <p><strong>Community Chat:</strong> A dedicated space for discussion where everyone can participate,
+                        keeping the feed clean.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>BrightBox vs. The Rest</h2>
+            <p>Why build a new platform when so many exist? Because they aren't built for <strong>focused
+                    communication</strong>.</p>
+            <br>
+            <div style="overflow-x: auto;">
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th>Standard Social Media</th>
+                            <th>Chat Apps (Slack/Teams)</th>
+                            <th>BrightBox</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Content Flow</strong></td>
+                            <td>Many-to-Many (Chaos)</td>
+                            <td>Many-to-Many (Noisy)</td>
+                            <td class="highlight">Few-to-Many (Structured)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Primary Goal</strong></td>
+                            <td>Engagement & Ads</td>
+                            <td>Real-time Collaboration</td>
+                            <td class="highlight">Knowledge Transfer</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Signal-to-Noise</strong></td>
+                            <td>Low (Algorithm driven)</td>
+                            <td>Medium (Easy to miss info)</td>
+                            <td class="highlight">High (Curated by Roles)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Moderation</strong></td>
+                            <td>Reactive (Report buttons)</td>
+                            <td>Loose (Peer pressure)</td>
+                            <td class="highlight">Proactive (Gatekept Posting)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Admin Dashboard: Data-Driven Decisions</h2>
+            <p>BrightBox isn't just about posting; it's about understanding your impact. Our comprehensive <strong>Admin
+                    Dashboard</strong> gives administrators deep insights into their space.</p>
+            <br>
+            <div class="grid">
+                <div class="feature">
+                    <h3>📊 Deep Analytics</h3>
+                    <p>Know exactly what content resonates. Track engagement metrics to see what worked, what didn't,
+                        and when your audience is most active.</p>
+                </div>
+                <div class="feature">
+                    <h3>👥 User Insights</h3>
+                    <p>Monitor active users and community growth. Get detailed reports on participation to ensure no
+                        student or employee is left behind.</p>
+                </div>
+                <div class="feature">
+                    <h3>🔬 Research-Backed</h3>
+                    <p>We are collaborating with <strong>real researchers</strong> in the field to develop metrics that
+                        matter, moving beyond vanity numbers to measure actual knowledge transfer.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Why It Works</h2>
+            <p>By separating the <strong>Signal</strong> (Feed) from the <strong>Noise</strong> (Chat), BrightBox
+                ensures that important information is always seen, while still allowing for community interaction and
+                feedback. It's the perfect balance of a broadcast system and a community forum.</p>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 BrightBox. All rights reserved.</p>
+    </footer>
+
+</body>
+
+</html>

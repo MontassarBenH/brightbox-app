@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { createClient } from '@/lib/supabase/client';
+import { getUserRole, canPost as canUserPost } from '@/lib/roles';
 
 type Subject = {
   id: string;
@@ -58,11 +59,18 @@ export function CreatePost({
   const charsLeft = charLimit - charsUsed;
   const canPost = content.trim().length > 0 && !creating;
 
+
   const handleCreate = async () => {
     if (!content.trim()) return;
 
     setCreating(true);
     try {
+      // Defense-in-depth: Check role again before submitting
+      const role = await getUserRole(supabase, userId);
+      if (!canUserPost(role)) {
+        throw new Error('Unauthorized: You do not have permission to post.');
+      }
+
       const { error } = await supabase.from('posts').insert({
         user_id: userId,
         content: content.trim(),
@@ -79,7 +87,7 @@ export function CreatePost({
       onPostCreated();
     } catch (error) {
       console.error('Create post error:', error);
-      alert('Failed to create post');
+      alert(error instanceof Error ? error.message : 'Failed to create post');
     } finally {
       setCreating(false);
     }
@@ -174,7 +182,7 @@ export function CreatePost({
             </div>
 
             {/* Thumbnails */}
-             <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
               {/* None option */}
               <button
                 onClick={() => setSelectedBg('')}
