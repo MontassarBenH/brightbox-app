@@ -414,21 +414,6 @@ const AdminDashboard = () => {
     setRecentReports(rows);
   };
 
-  const _approveReport = async (id: string) => {
-    setBusyReportId(id);
-    await supabase.from('reports').update({ status: 'approved' }).eq('id', id);
-    setBusyReportId(null);
-    loadStats();
-    loadRecentReports();
-  };
-
-  const _rejectReport = async (id: string) => {
-    setBusyReportId(id);
-    await supabase.from('reports').update({ status: 'rejected' }).eq('id', id);
-    setBusyReportId(null);
-    loadStats();
-    loadRecentReports();
-  };
 
   // ---------- effects ----------
   useEffect(() => {

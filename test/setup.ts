@@ -7,27 +7,31 @@ import { cleanup } from '@testing-library/react'
 beforeAll(() => {
   if (!HTMLElement.prototype.scrollIntoView) {
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      value: () => {},
+      value: () => { },
       configurable: true,
       writable: true,
     })
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (typeof (globalThis as any).IntersectionObserver === 'undefined') {
-    ;(globalThis as any).IntersectionObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-      constructor() {}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).IntersectionObserver = class {
+      observe() { }
+      unobserve() { }
+      disconnect() { }
+      constructor() { }
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (typeof (globalThis as any).ResizeObserver === 'undefined') {
-    ;(globalThis as any).ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-      constructor() {}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).ResizeObserver = class {
+      observe() { }
+      unobserve() { }
+      disconnect() { }
+      constructor() { }
     }
   }
 
@@ -37,13 +41,13 @@ beforeAll(() => {
     writable: true,
   })
   Object.defineProperty(HTMLMediaElement.prototype, 'pause', {
-    value: () => {},
+    value: () => { },
     configurable: true,
     writable: true,
   })
 
   if (typeof window.scrollTo !== 'function') {
-    window.scrollTo = () => {}
+    window.scrollTo = () => { }
   }
 })
 

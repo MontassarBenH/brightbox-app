@@ -131,10 +131,7 @@ type FeedClientProps = {
 };
 
 
-export default function FeedClient({ user,
-  videoApi: _videoApi,
-  postApi: _postApi,
-}: FeedClientProps) {
+export default function FeedClient({ user }: FeedClientProps) {
   const supabase = createClient();
   const router = useRouter();
 
